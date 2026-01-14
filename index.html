@@ -4,7 +4,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gestión Interdisciplinaria - Administracion General</title>
+    <title>Guidari Center - Gestión Interdisciplinaria</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
@@ -30,44 +30,25 @@
       }
     </script>
     <style>
-      body {
-        background-color: #fdfaf0;
-        color: #1d3557;
-      }
-      .custom-scrollbar::-webkit-scrollbar {
-        width: 6px;
-      }
-      .custom-scrollbar::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #aed8cf;
-        border-radius: 10px;
-      }
-      .leaf-accent {
-        position: fixed;
-        bottom: -50px;
-        right: -50px;
-        opacity: 0.1;
-        pointer-events: none;
-        width: 400px;
-        transform: rotate(-15deg);
-      }
+      body { background-color: #fdfaf0; color: #1d3557; }
+      .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+      .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: #aed8cf; border-radius: 10px; }
       @keyframes shake {
         0%, 100% { transform: translateX(0); }
         25% { transform: translateX(-5px); }
         75% { transform: translateX(5px); }
       }
-      .animate-shake {
-        animation: shake 0.4s ease-in-out;
-      }
+      .animate-shake { animation: shake 0.4s ease-in-out; }
+      .loading-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
     </style>
-    <script type="importmap">
+  <script type="importmap">
 {
   "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
     "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
     "recharts": "https://esm.sh/recharts@^3.6.0",
     "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.90.1",
@@ -76,15 +57,9 @@
   }
 }
 </script>
-  </head>
+</head>
   <body class="font-sans antialiased">
     <div id="root"></div>
-    <!-- Script necesario para que Vite procese la aplicación en el despliegue -->
     <script type="module" src="/index.tsx"></script>
-    <div class="leaf-accent">
-      <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-        <path fill="#4a7c74" d="M44.7,-76.4C58.3,-69.2,70.1,-58.5,78.2,-45.5C86.3,-32.5,90.7,-17.2,89.5,-2.5C88.2,12.2,81.3,26.3,72.1,38.5C62.9,50.7,51.4,61,38.1,68.9C24.8,76.8,9.7,82.3,-5.1,81.1C-19.9,79.9,-34.4,72,-47,62.2C-59.6,52.4,-70.3,40.7,-77.1,27.1C-83.9,13.5,-86.8,-2,-84.6,-16.9C-82.4,-31.8,-75,-46.1,-63.4,-54.6C-51.8,-63.1,-35.9,-65.8,-21.8,-73.4C-7.7,-81,4.6,-93.5,18.4,-92.4C32.2,-91.3,31.1,-83.6,44.7,-76.4Z" transform="translate(100 100)" />
-      </svg>
-    </div>
   </body>
 </html>

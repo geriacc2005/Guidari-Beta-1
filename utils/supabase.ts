@@ -1,13 +1,10 @@
 
 import { createClient } from '@supabase/supabase-js';
 
+// NOTA: Estas claves son para desarrollo Guidari Beta. 
+// En producción real deberían ser variables de entorno de Vercel.
 const supabaseUrl = 'https://zugbripyvaidkpesrvaa.supabase.co';
 const supabaseKey = 'sb_publishable_dG-K9akAvooI8qFDK7q6lg_nuRIqGri';
-
-// Validar que las variables existen antes de crear el cliente
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Supabase: Faltan credenciales de conexión.');
-}
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
