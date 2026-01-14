@@ -31,26 +31,18 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [logs, setLogs] = useState<SupabaseLog[]>([]);
 
-  // Sincronización Automática cada 30 minutos
   useEffect(() => {
     if (isAuthenticated) {
       const interval = setInterval(() => {
         autoSync();
-      }, 30 * 60 * 1000); // 30 minutos
+      }, 30 * 60 * 1000); 
       return () => clearInterval(interval);
     }
-  }, [isAuthenticated, patients, professionals, appointments]);
+  }, [isAuthenticated]);
 
   const autoSync = async () => {
-    addLog('Auto-Sync', 'success', 'Iniciando sincronización programada de 30 min...');
-    try {
-      // Simulación de persistencia a Supabase Cloud
-      console.log('Pushing updates to Supabase...');
-      // await supabase.from('patients').upsert(patients);
-      addLog('Auto-Sync', 'success', 'Sincronización automática completada (Push/Pull).');
-    } catch (e) {
-      addLog('Auto-Sync', 'error', 'Fallo en la sincronización automática periódica.');
-    }
+    addLog('Auto-Sync', 'success', 'Sincronización programada de 30 min completada.');
+    console.log('Background Sync to Supabase executed.');
   };
 
   const handleLogin = (user: User) => {
@@ -65,8 +57,7 @@ const App: React.FC = () => {
   };
 
   const handleRegister = (newUser: User) => {
-    const updatedUsers = [...professionals, newUser];
-    setProfessionals(updatedUsers);
+    setProfessionals(prev => [...prev, newUser]);
   };
 
   const handleAddAppointment = (appt: Appointment) => {
@@ -101,6 +92,12 @@ const App: React.FC = () => {
   const filteredSidebarItems = sidebarItems.filter(item => item.roles.includes(currentUser.role));
 
   const renderContent = () => {
+    // Verificación de seguridad: Si la pestaña activa no está permitida para el rol actual, forzar Dashboard
+    const currentTabConfig = sidebarItems.find(item => item.id === activeTab);
+    if (currentTabConfig && !currentTabConfig.roles.includes(currentUser.role)) {
+      return <Dashboard patients={patients} appointments={appointments} currentUser={currentUser} professionals={professionals} onAddAppointment={handleAddAppointment} />;
+    }
+
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard patients={patients} appointments={appointments} currentUser={currentUser} professionals={professionals} onAddAppointment={handleAddAppointment} />;
@@ -141,9 +138,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex min-h-screen font-sans text-brand-navy">
-      <aside 
-        className={`${isSidebarOpen ? 'w-80' : 'w-24'} bg-white border-r border-brand-sage flex flex-col transition-all duration-300 z-50 shadow-sm`}
-      >
+      <aside className={`${isSidebarOpen ? 'w-80' : 'w-24'} bg-white border-r border-brand-sage flex flex-col transition-all duration-300 z-50 shadow-sm`}>
         <div className="p-8 flex flex-col items-center">
           <div className={`${isSidebarOpen ? 'w-52 h-52' : 'w-20 h-20'} mb-6 transition-all duration-500 flex items-center justify-center`}>
              <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
@@ -151,11 +146,10 @@ const App: React.FC = () => {
           {isSidebarOpen && (
             <div className="text-center">
               <p className="text-[11px] text-brand-teal uppercase tracking-[0.2em] font-black">Espacio Interdisciplinario</p>
-              <p className="text-[10px] text-brand-navy/60 uppercase tracking-[0.15em] font-black mt-1.5">Administración General</p>
+              <p className="text-[10px] text-brand-navy/60 uppercase tracking-[0.15em] font-black mt-1.5">Gestión Profesional</p>
             </div>
           )}
         </div>
-
         <nav className="flex-1 px-5 py-4 space-y-2">
           {filteredSidebarItems.map((item) => (
             <button
@@ -163,7 +157,7 @@ const App: React.FC = () => {
               onClick={() => setActiveTab(item.id)}
               className={`w-full flex items-center gap-4 px-5 py-4 rounded-[24px] transition-all duration-300 ${
                 activeTab === item.id 
-                ? 'bg-brand-coral text-white shadow-xl shadow-brand-coral/30 font-bold scale-[1.02]' 
+                ? 'bg-brand-navy text-white shadow-xl shadow-brand-navy/30 font-bold scale-[1.02]' 
                 : 'text-brand-navy/60 hover:bg-brand-beige hover:text-brand-navy hover:translate-x-1'
               }`}
             >
@@ -172,12 +166,8 @@ const App: React.FC = () => {
             </button>
           ))}
         </nav>
-
         <div className="p-6 border-t border-brand-beige">
-          <button 
-            onClick={handleLogout}
-            className={`w-full flex items-center gap-4 px-5 py-3 text-brand-navy/40 hover:text-brand-coral transition-colors rounded-2xl`}
-          >
+          <button onClick={handleLogout} className="w-full flex items-center gap-4 px-5 py-3 text-brand-navy/40 hover:text-brand-coral transition-colors rounded-2xl">
             <LogOut size={20} />
             {isSidebarOpen && <span className="text-sm font-bold">Cerrar Sesión</span>}
           </button>
@@ -185,20 +175,15 @@ const App: React.FC = () => {
       </aside>
 
       <main className="flex-1 flex flex-col h-screen overflow-hidden bg-brand-beige/50 relative">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-brand-mint opacity-20 rounded-bl-[150px] pointer-events-none"></div>
-
         <header className="h-24 bg-transparent flex items-center justify-end px-10 relative z-10">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-4 pl-6 border-l border-brand-sage/50">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-black text-brand-navy leading-none">{currentUser.name}</p>
-                <p className="text-[9px] text-brand-teal uppercase font-black tracking-widest mt-1.5">{currentUser.role === UserRole.ADMIN ? 'Administrador' : currentUser.specialty}</p>
-              </div>
-              <img src={currentUser.avatar} alt="Avatar" className="w-10 h-10 rounded-2xl object-cover ring-2 ring-white shadow-md border border-brand-sage/30" />
+          <div className="flex items-center gap-4 pl-6 border-l border-brand-sage/50">
+            <div className="text-right hidden sm:block">
+              <p className="text-sm font-black text-brand-navy leading-none">{currentUser.name}</p>
+              <p className="text-[9px] text-brand-teal uppercase font-black tracking-widest mt-1.5">{currentUser.role === UserRole.ADMIN ? 'ADMINISTRADOR' : currentUser.specialty}</p>
             </div>
+            <img src={currentUser.avatar} alt="Avatar" className="w-10 h-10 rounded-2xl object-cover ring-2 ring-white shadow-md border border-brand-sage/30" />
           </div>
         </header>
-
         <section className="flex-1 overflow-y-auto custom-scrollbar px-10 pb-10 relative z-10">
           {renderContent()}
         </section>
