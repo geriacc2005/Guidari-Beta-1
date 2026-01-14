@@ -1,0 +1,8 @@
+{
+  "name": "Guidari Beta 1",
+  "description": "A comprehensive rehabilitation center management platform featuring patient tracking, therapist scheduling, and financial oversight with role-based access control.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
