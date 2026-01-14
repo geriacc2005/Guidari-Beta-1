@@ -6,6 +6,15 @@ import {
   Calendar, School, Edit2, X, BookOpen, UserPlus, Info, Save, PlusCircle, Camera, Clock, Users, ChevronRight, Image as ImageIcon, Briefcase, GraduationCap, Maximize2
 } from 'lucide-react';
 
+// Helper para generar UUIDs válidos para Supabase
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
 interface PatientListProps {
   patients: Patient[];
   professionals: User[];
@@ -37,7 +46,6 @@ const PatientList: React.FC<PatientListProps> = ({ patients, professionals, curr
   const [showModal, setShowModal] = useState(false);
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [showFullHistoryModal, setShowFullHistoryModal] = useState(false);
-  const [selectedProAgenda, setSelectedProAgenda] = useState<User | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [newNoteContent, setNewNoteContent] = useState('');
   const [newNoteDate, setNewNoteDate] = useState(new Date().toISOString().split('T')[0]);
@@ -52,7 +60,6 @@ const PatientList: React.FC<PatientListProps> = ({ patients, professionals, curr
         setShowModal(false);
         setShowNoteModal(false);
         setShowFullHistoryModal(false);
-        setSelectedProAgenda(null);
       }
     };
     window.addEventListener('keydown', handleEsc);
@@ -135,7 +142,7 @@ const PatientList: React.FC<PatientListProps> = ({ patients, professionals, curr
       const newPatient: Patient = {
         ...INITIAL_FORM_STATE,
         ...formData,
-        id: 'p' + (Date.now()),
+        id: generateUUID(),
         clinicalHistory: [],
         documents: []
       } as Patient;
@@ -150,7 +157,7 @@ const PatientList: React.FC<PatientListProps> = ({ patients, professionals, curr
     if (!selectedPatient || !newNoteContent.trim()) return;
 
     const newNote: ClinicalNote = {
-      id: 'note-' + Date.now(),
+      id: generateUUID(),
       date: new Date(newNoteDate + 'T12:00:00').toISOString(),
       professionalId: currentUser.id,
       content: newNoteContent
@@ -176,7 +183,7 @@ const PatientList: React.FC<PatientListProps> = ({ patients, professionals, curr
       <div className="flex justify-between items-center shrink-0">
         <div>
           <h2 className="text-3xl font-display font-bold text-brand-navy">Pacientes</h2>
-          <p className="text-sm text-brand-teal font-medium">Gestión unificada de historias clínicas y staff interdisciplinario</p>
+          <p className="text-sm text-brand-teal font-medium">Legajos digitales de rehabilitación</p>
         </div>
         {isAdmin && (
           <button 
@@ -323,9 +330,6 @@ const PatientList: React.FC<PatientListProps> = ({ patients, professionals, curr
                                 <p className="text-[10px] font-bold uppercase tracking-widest">Sin registros previos</p>
                             </div>
                         )}
-                        {selectedPatient.clinicalHistory && selectedPatient.clinicalHistory.length > 3 && (
-                          <button onClick={() => setShowFullHistoryModal(true)} className="w-full text-center text-[10px] font-black text-brand-teal uppercase tracking-widest py-2 hover:text-brand-coral transition-colors">Ver historial completo</button>
-                        )}
                     </div>
                 </div>
               </div>
@@ -366,7 +370,7 @@ const PatientList: React.FC<PatientListProps> = ({ patients, professionals, curr
                          <div className="absolute left-0 top-0 bottom-0 w-px bg-brand-sage"></div>
                          <div className="absolute left-[-5px] top-6 w-3 h-3 rounded-full bg-brand-coral ring-4 ring-brand-beige shadow-sm"></div>
                          
-                         <div className="bg-white p-6 sm:p-8 rounded-[40px] border border-brand-sage shadow-sm hover:shadow-lg hover:border-brand-coral/30 transition-all">
+                         <div className="bg-white p-6 sm:p-8 rounded-[40px] border border-brand-sage shadow-sm hover:shadow-lg transition-all">
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                                <div className="flex items-center gap-4">
                                   <img src={pro?.avatar} className="w-10 h-10 rounded-2xl ring-2 ring-brand-beige shadow-sm" />
@@ -376,13 +380,10 @@ const PatientList: React.FC<PatientListProps> = ({ patients, professionals, curr
                                   </div>
                                </div>
                                <div className="text-left sm:text-right">
-                                  <p className="text-xs font-black text-brand-navy">{new Date(note.date).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                                  <p className="text-[10px] text-brand-teal/40 font-bold uppercase mt-1">{new Date(note.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} hs</p>
+                                  <p className="text-xs font-black text-brand-navy">{new Date(note.date).toLocaleDateString()}</p>
                                </div>
                             </div>
-                            <div className="max-w-none">
-                               <p className="text-brand-navy/80 leading-relaxed text-sm whitespace-pre-wrap break-words overflow-wrap-anywhere italic">"{note.content}"</p>
-                            </div>
+                            <p className="text-brand-navy/80 leading-relaxed text-sm whitespace-pre-wrap italic">"{note.content}"</p>
                          </div>
                       </div>
                     );
@@ -392,12 +393,6 @@ const PatientList: React.FC<PatientListProps> = ({ patients, professionals, curr
                        <p className="text-xl font-display font-bold">Sin evoluciones registradas</p>
                     </div>
                  )}
-              </div>
-              
-              <div className="p-8 bg-white/80 border-t border-brand-sage flex justify-end shrink-0">
-                 <button onClick={() => { setShowFullHistoryModal(false); handleOpenNote(selectedPatient); }} className="bg-brand-coral text-white px-10 py-4 rounded-[28px] font-bold shadow-xl shadow-brand-coral/20 hover:scale-[1.05] transition-all flex items-center gap-3 text-sm">
-                    <PlusCircle size={20} /> Agregar Nueva Evolución
-                 </button>
               </div>
            </div>
         </div>
@@ -485,29 +480,6 @@ const PatientList: React.FC<PatientListProps> = ({ patients, professionals, curr
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="space-y-3 bg-white/40 p-5 rounded-[28px] border border-brand-sage/30">
-                        <div className="flex items-center gap-2 mb-1">
-                           <div className="p-1.5 bg-brand-mint/20 text-brand-teal rounded-lg"><GraduationCap size={12} /></div>
-                           <h4 className="text-[9px] font-black text-brand-navy uppercase tracking-widest">Maestra de Apoyo</h4>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <input type="text" placeholder="Nombre" className="w-full bg-white border border-brand-sage rounded-xl p-2.5 text-xs font-medium" value={formData.supportTeacher?.name} onChange={e => setFormData({...formData, supportTeacher: { ...formData.supportTeacher!, name: e.target.value}})} />
-                            <input type="text" placeholder="Teléfono" className="w-full bg-white border border-brand-sage rounded-xl p-2.5 text-xs font-medium" value={formData.supportTeacher?.phone} onChange={e => setFormData({...formData, supportTeacher: { ...formData.supportTeacher!, phone: e.target.value}})} />
-                        </div>
-                    </div>
-                    <div className="space-y-3 bg-white/40 p-5 rounded-[28px] border border-brand-sage/30">
-                        <div className="flex items-center gap-2 mb-1">
-                           <div className="p-1.5 bg-brand-coral/10 text-brand-coral rounded-lg"><Briefcase size={12} /></div>
-                           <h4 className="text-[9px] font-black text-brand-navy uppercase tracking-widest">Acompañante Terapéutico</h4>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <input type="text" placeholder="Nombre" className="w-full bg-white border border-brand-sage rounded-xl p-2.5 text-xs font-medium" value={formData.therapeuticCompanion?.name} onChange={e => setFormData({...formData, therapeuticCompanion: { ...formData.therapeuticCompanion!, name: e.target.value}})} />
-                            <input type="text" placeholder="Teléfono" className="w-full bg-white border border-brand-sage rounded-xl p-2.5 text-xs font-medium" value={formData.therapeuticCompanion?.phone} onChange={e => setFormData({...formData, therapeuticCompanion: { ...formData.therapeuticCompanion!, phone: e.target.value}})} />
-                        </div>
-                    </div>
-                </div>
-
                 {isAdmin && (
                   <div className="space-y-4">
                       <div className="flex items-center gap-2">
@@ -562,7 +534,7 @@ const PatientList: React.FC<PatientListProps> = ({ patients, professionals, curr
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-brand-teal uppercase tracking-widest ml-2">Observaciones Clínicas</label>
                       <textarea 
-                          className="w-full bg-white border border-brand-sage rounded-[32px] p-6 text-sm min-h-[180px] outline-none font-medium leading-relaxed shadow-inner break-words overflow-wrap-anywhere"
+                          className="w-full bg-white border border-brand-sage rounded-[32px] p-6 text-sm min-h-[180px] outline-none font-medium leading-relaxed shadow-inner"
                           placeholder="Describa el progreso de la sesión..."
                           value={newNoteContent}
                           onChange={(e) => setNewNoteContent(e.target.value)}

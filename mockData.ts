@@ -3,7 +3,7 @@ import { User, UserRole, Patient, Appointment } from './types';
 
 export const mockUsers: User[] = [
   {
-    id: 'u1',
+    id: '00000000-0000-0000-0000-000000000001',
     email: 'crisfreuter@gmail.com',
     password: 'Cris1234',
     pin: '666967',

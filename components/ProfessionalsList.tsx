@@ -1,7 +1,16 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { User, UserRole, Appointment, Patient } from '../types';
-import { Mail, ShieldCheck, X, Plus, Calendar, Camera, DollarSign, Award, Clock, UserCheck, Upload, Image as ImageIcon, Lock, Key } from 'lucide-react';
+import { Mail, ShieldCheck, X, Plus, Calendar, Camera, DollarSign, Award, Clock, UserCheck, Upload, Image as ImageIcon, Lock, Key, Edit2, Save } from 'lucide-react';
+
+// Helper para generar UUIDs válidos para Supabase
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
 
 interface ProfessionalsListProps {
   professionals: User[];
@@ -12,11 +21,12 @@ interface ProfessionalsListProps {
 }
 
 const ProfessionalsList: React.FC<ProfessionalsListProps> = ({ professionals, appointments, patients, currentUser, onUpdate }) => {
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [selectedProAgenda, setSelectedProAgenda] = useState<User | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [newPro, setNewPro] = useState<Partial<User>>({
+  const [formData, setFormData] = useState<Partial<User>>({
     firstName: '',
     lastName: '',
     email: '',
@@ -35,7 +45,7 @@ const ProfessionalsList: React.FC<ProfessionalsListProps> = ({ professionals, ap
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setShowAddModal(false);
+        setShowModal(false);
         setSelectedProAgenda(null);
       }
     };
@@ -48,30 +58,48 @@ const ProfessionalsList: React.FC<ProfessionalsListProps> = ({ professionals, ap
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setNewPro(prev => ({ ...prev, avatar: reader.result as string }));
+        setFormData(prev => ({ ...prev, avatar: reader.result as string }));
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const handleAddPro = () => {
-    if (!newPro.firstName || !newPro.lastName || !newPro.email || !newPro.password || !newPro.pin) {
-        alert('Por favor, complete los campos obligatorios.');
-        return;
-    }
-    
-    const proToAdd: User = {
-      ...newPro as User,
-      id: 'u' + (Date.now()),
-      name: `${newPro.firstName} ${newPro.lastName}`
-    };
-    onUpdate([...professionals, proToAdd]);
-    setShowAddModal(false);
-    setNewPro({
+  const handleOpenAdd = () => {
+    setIsEditing(false);
+    setFormData({
       firstName: '', lastName: '', email: '', password: '', pin: '', dob: '', specialty: '',
       sessionValue: 0, commissionRate: 60, role: UserRole.PROFESSIONAL,
       avatar: 'https://picsum.photos/seed/default/200'
     });
+    setShowModal(true);
+  };
+
+  const handleOpenEdit = (pro: User) => {
+    setIsEditing(true);
+    setFormData({ ...pro });
+    setShowModal(true);
+  };
+
+  const handleSavePro = () => {
+    if (!formData.firstName || !formData.lastName || !formData.email || !formData.password || !formData.pin) {
+        alert('Por favor, complete los campos obligatorios (Nombre, Apellido, Email, Contraseña y PIN).');
+        return;
+    }
+    
+    let updatedPros: User[];
+    if (isEditing && formData.id) {
+      updatedPros = professionals.map(p => p.id === formData.id ? { ...p, ...formData, name: `${formData.firstName} ${formData.lastName}` } as User : p);
+    } else {
+      const proToAdd: User = {
+        ...formData as User,
+        id: generateUUID(),
+        name: `${formData.firstName} ${formData.lastName}`
+      };
+      updatedPros = [...professionals, proToAdd];
+    }
+    
+    onUpdate(updatedPros);
+    setShowModal(false);
   };
 
   return (
@@ -83,7 +111,7 @@ const ProfessionalsList: React.FC<ProfessionalsListProps> = ({ professionals, ap
         </div>
         {isAdmin && (
            <button 
-             onClick={() => setShowAddModal(true)}
+             onClick={handleOpenAdd}
              className="bg-brand-navy text-white px-8 py-3.5 rounded-2xl flex items-center gap-3 font-bold shadow-xl shadow-brand-navy/20 hover:scale-[1.02] transition-all"
            >
              <Plus size={20} />
@@ -138,33 +166,43 @@ const ProfessionalsList: React.FC<ProfessionalsListProps> = ({ professionals, ap
                   )}
                 </div>
 
-                {canViewAgenda && (
-                  <button 
-                    onClick={() => setSelectedProAgenda(pro)}
-                    className="mt-10 w-full py-4 rounded-[24px] bg-brand-mint/10 text-brand-teal text-[10px] font-black uppercase tracking-widest hover:bg-brand-mint hover:text-white transition-all shadow-sm"
-                  >
-                    Ver Agenda
-                  </button>
-                )}
+                <div className="w-full grid grid-cols-2 gap-3 mt-8">
+                  {canViewAgenda && (
+                    <button 
+                      onClick={() => setSelectedProAgenda(pro)}
+                      className="py-3 rounded-[20px] bg-brand-mint/10 text-brand-teal text-[9px] font-black uppercase tracking-widest hover:bg-brand-mint hover:text-white transition-all"
+                    >
+                      Agenda
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button 
+                      onClick={() => handleOpenEdit(pro)}
+                      className="py-3 rounded-[20px] bg-brand-beige text-brand-navy/60 text-[9px] font-black uppercase tracking-widest hover:bg-brand-navy hover:text-white transition-all flex items-center justify-center gap-2"
+                    >
+                      <Edit2 size={12} /> Editar
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           );
         })}
       </div>
 
-      {showAddModal && isAdmin && (
+      {showModal && isAdmin && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-brand-navy/30 backdrop-blur-md p-6">
           <div className="bg-brand-beige w-full max-w-2xl rounded-[48px] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in duration-300 max-h-[90vh]">
             <div className="p-8 border-b border-brand-sage flex justify-between items-center bg-white/50 shrink-0">
-                <h3 className="text-2xl font-display font-bold text-brand-navy">Alta de Staff</h3>
-                <button onClick={() => setShowAddModal(false)} className="text-brand-navy/30 hover:text-brand-coral transition-colors p-2 hover:bg-white rounded-xl"><X size={24} /></button>
+                <h3 className="text-2xl font-display text-brand-navy font-bold">{isEditing ? 'Editar Profesional' : 'Alta de Staff'}</h3>
+                <button onClick={() => setShowModal(false)} className="text-brand-navy/30 hover:text-brand-coral transition-colors p-2 hover:bg-white rounded-xl"><X size={24} /></button>
             </div>
             
             <div className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-8">
                 <div className="flex flex-col items-center gap-3">
                     <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                         <div className="w-20 h-20 rounded-[28px] overflow-hidden ring-4 ring-white shadow-xl bg-brand-mint/20 flex items-center justify-center transition-all group-hover:scale-105">
-                          {newPro.avatar ? <img src={newPro.avatar} className="w-full h-full object-cover" /> : <ImageIcon size={28} className="text-brand-teal/40" />}
+                          {formData.avatar ? <img src={formData.avatar} className="w-full h-full object-cover" /> : <ImageIcon size={28} className="text-brand-teal/40" />}
                         </div>
                         <div className="absolute -bottom-1 -right-1 bg-brand-navy text-white p-2 rounded-xl shadow-xl"><Camera size={12} /></div>
                     </div>
@@ -175,74 +213,51 @@ const ProfessionalsList: React.FC<ProfessionalsListProps> = ({ professionals, ap
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                     <div className="space-y-1">
                       <label className="text-[9px] font-black text-brand-teal uppercase tracking-widest ml-1">Nombres *</label>
-                      <input type="text" className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-medium" value={newPro.firstName} onChange={e => setNewPro({...newPro, firstName: e.target.value})} />
+                      <input type="text" className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-medium" value={formData.firstName} onChange={e => setFormData({...formData, firstName: e.target.value})} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[9px] font-black text-brand-teal uppercase tracking-widest ml-1">Apellidos *</label>
-                      <input type="text" className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-medium" value={newPro.lastName} onChange={e => setNewPro({...newPro, lastName: e.target.value})} />
+                      <input type="text" className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-medium" value={formData.lastName} onChange={e => setFormData({...formData, lastName: e.target.value})} />
                     </div>
                     <div className="space-y-1 md:col-span-2">
                       <label className="text-[9px] font-black text-brand-teal uppercase tracking-widest ml-1">Especialidad Clínica</label>
-                      <input type="text" className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-medium" value={newPro.specialty} onChange={e => setNewPro({...newPro, specialty: e.target.value})} />
+                      <input type="text" className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-medium" value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})} />
                     </div>
                     <div className="space-y-1 md:col-span-2">
                       <label className="text-[9px] font-black text-brand-teal uppercase tracking-widest ml-1">Email *</label>
-                      <input type="email" className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-medium" value={newPro.email} onChange={e => setNewPro({...newPro, email: e.target.value})} />
+                      <input type="email" className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-medium" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
                     </div>
                     
                     <div className="pt-2 md:col-span-2 border-t border-brand-sage/50 mt-1 grid grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <label className="text-[9px] font-black text-brand-teal uppercase tracking-widest ml-1">Contraseña *</label>
-                          <input type="password" placeholder="Mínimo 8 carac." className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-medium" value={newPro.password} onChange={e => setNewPro({...newPro, password: e.target.value})} />
+                          <input type="password" placeholder="Mínimo 8 carac." className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-medium" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[9px] font-black text-brand-teal uppercase tracking-widest ml-1">PIN (4-6 núm) *</label>
-                          <input type="password" placeholder="Acceso rápido" className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-black tracking-widest" value={newPro.pin} onChange={e => setNewPro({...newPro, pin: e.target.value.replace(/\D/g, '').slice(0, 6)})} />
+                          <input type="password" placeholder="Acceso rápido" className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-black tracking-widest" value={formData.pin} onChange={e => setFormData({...formData, pin: e.target.value.replace(/\D/g, '').slice(0, 6)})} />
                         </div>
                     </div>
 
                     <div className="pt-2 md:col-span-2 border-t border-brand-sage/50 mt-1 grid grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <label className="text-[9px] font-black text-brand-coral uppercase tracking-widest ml-1">Valor Sesión ($)</label>
-                          <input type="number" className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-black" value={newPro.sessionValue} onChange={e => setNewPro({...newPro, sessionValue: Number(e.target.value)})} />
+                          <input type="number" className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-black" value={formData.sessionValue} onChange={e => setFormData({...formData, sessionValue: Number(e.target.value)})} />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[9px] font-black text-brand-teal uppercase tracking-widest ml-1">Comisión (%)</label>
-                          <input type="number" className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-black" value={newPro.commissionRate} onChange={e => setNewPro({...newPro, commissionRate: Number(e.target.value)})} />
+                          <input type="number" className="w-full bg-white border border-brand-sage rounded-xl p-3 text-xs font-black" value={formData.commissionRate} onChange={e => setFormData({...formData, commissionRate: Number(e.target.value)})} />
                         </div>
                     </div>
                 </div>
             </div>
             
             <div className="p-8 bg-white/80 border-t border-brand-sage flex justify-end gap-5 shrink-0">
-                <button onClick={() => setShowAddModal(false)} className="px-8 py-4 rounded-2xl font-bold text-brand-navy/40 hover:text-brand-coral transition-all text-xs">Cancelar</button>
-                <button onClick={handleAddPro} className="px-12 py-4 bg-brand-navy text-white rounded-2xl font-bold shadow-xl hover:scale-[1.05] transition-all text-xs">Crear Staff</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedProAgenda && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-end bg-brand-navy/30 backdrop-blur-sm p-0">
-          <div className="bg-brand-beige w-full max-w-md h-full shadow-2xl animate-in slide-in-from-right duration-500 overflow-y-auto custom-scrollbar">
-             <div className="p-10 border-b border-brand-sage flex justify-between items-center bg-white sticky top-0 z-10">
-                <div className="flex items-center gap-4">
-                  <img src={selectedProAgenda.avatar} className="w-12 h-12 rounded-2xl ring-2 ring-brand-beige shadow-lg" />
-                  <div>
-                    <h3 className="text-xl font-display font-bold text-brand-navy">{selectedProAgenda.name}</h3>
-                    <p className="text-[10px] text-brand-teal font-black uppercase tracking-widest">{selectedProAgenda.specialty}</p>
-                  </div>
-                </div>
-                <button onClick={() => setSelectedProAgenda(null)} className="p-3 hover:bg-brand-beige rounded-2xl transition-colors text-brand-teal">
-                  <X size={24} />
+                <button onClick={() => setShowModal(false)} className="px-8 py-4 rounded-2xl font-bold text-brand-navy/40 hover:text-brand-coral transition-all text-xs">Cancelar</button>
+                <button onClick={handleSavePro} className="px-12 py-4 bg-brand-navy text-white rounded-2xl font-bold shadow-xl hover:scale-[1.05] transition-all text-xs flex items-center gap-2">
+                  <Save size={16} /> {isEditing ? 'Guardar Cambios' : 'Crear Staff'}
                 </button>
-             </div>
-             
-             <div className="p-10 space-y-8">
-                <h4 className="text-[10px] font-black text-brand-navy uppercase tracking-[0.4em] border-b border-brand-sage pb-4">Turnos Programados</h4>
-                {/* Agenda simplificada para el modal */}
-                <p className="text-xs text-brand-teal italic">Visualización rápida de turnos...</p>
-             </div>
+            </div>
           </div>
         </div>
       )}

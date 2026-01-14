@@ -23,6 +23,16 @@ import DocumentsView from './components/DocumentsView';
 import Auth from './components/Auth';
 import { supabase } from './utils/supabase';
 
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
+const isUUID = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -34,43 +44,155 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<SupabaseLog[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
-  const addLog = useCallback((action: string, status: 'success' | 'error', message: string) => {
+  const addLog = useCallback((action: string, status: 'success' | 'error', message: any) => {
+    let displayMessage = '';
+    
+    if (message && typeof message === 'object') {
+      const errorData = message.error || message;
+      if (errorData.message) {
+        displayMessage = `${errorData.code || 'DB'}: ${errorData.message} ${errorData.details ? `(${errorData.details})` : ''}`;
+      } else {
+        try {
+          displayMessage = JSON.stringify(errorData);
+        } catch (e) {
+          displayMessage = 'Error complejo de base de datos';
+        }
+      }
+    } else {
+      displayMessage = String(message || 'Operación finalizada');
+    }
+
     const newLog: SupabaseLog = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateUUID(),
       timestamp: new Date().toLocaleTimeString(),
       action,
       status,
-      message
+      message: displayMessage
     };
     setLogs(prev => [newLog, ...prev].slice(0, 50));
   }, []);
 
-  // Carga real de datos desde Supabase
+  const mapUserFromSupabase = (u: any): User => ({
+    id: u.id,
+    email: u.email,
+    password: u.password,
+    pin: u.pin,
+    firstName: u.first_name || '',
+    lastName: u.last_name || '',
+    name: u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim(),
+    role: u.role as UserRole,
+    avatar: u.avatar || '',
+    specialty: u.specialty || '',
+    sessionValue: Number(u.session_value || 0),
+    commissionRate: Number(u.commission_rate || 0),
+    dob: u.dob || ''
+  });
+
+  const mapUserToSupabase = (u: User) => ({
+    id: u.id,
+    email: u.email,
+    password: u.password,
+    pin: u.pin,
+    first_name: u.firstName,
+    last_name: u.lastName,
+    name: u.name,
+    role: u.role,
+    avatar: u.avatar,
+    specialty: u.specialty,
+    session_value: u.sessionValue,
+    commission_rate: u.commissionRate,
+    dob: u.dob && u.dob !== "" ? u.dob : null
+  });
+
+  const mapPatientFromSupabase = (p: any): Patient => ({
+    id: p.id,
+    firstName: p.first_name,
+    lastName: p.last_name,
+    dateOfBirth: p.date_of_birth || '',
+    diagnosis: p.diagnosis || '',
+    insurance: p.insurance || 'Particular',
+    avatar: p.avatar || '',
+    affiliateNumber: p.affiliate_number || '',
+    school: p.school || '',
+    supportTeacher: p.support_teacher || { name: '', phone: '', email: '' },
+    therapeuticCompanion: p.therapeutic_companion || { name: '', phone: '', email: '' },
+    responsible: p.responsible || { name: '', address: '', phone: '', email: '' },
+    assignedProfessionals: Array.isArray(p.assigned_professionals) ? p.assigned_professionals : [],
+    clinicalHistory: Array.isArray(p.clinical_history) ? p.clinical_history : [],
+    documents: Array.isArray(p.documents) ? p.documents : []
+  });
+
+  const mapPatientToSupabase = (p: Patient) => ({
+    id: p.id,
+    first_name: p.firstName,
+    last_name: p.lastName,
+    date_of_birth: p.dateOfBirth && p.dateOfBirth !== "" ? p.dateOfBirth : null,
+    diagnosis: p.diagnosis,
+    insurance: p.insurance,
+    avatar: p.avatar,
+    affiliate_number: p.affiliateNumber,
+    school: p.school,
+    support_teacher: p.supportTeacher,
+    therapeutic_companion: p.therapeuticCompanion,
+    responsible: p.responsible,
+    assigned_professionals: (p.assignedProfessionals || []).filter(isUUID),
+    clinical_history: p.clinicalHistory,
+    documents: p.documents
+  });
+
+  const mapAppointmentFromSupabase = (a: any): Appointment => ({
+    id: a.id,
+    patientId: a.patient_id,
+    professionalId: a.professional_id,
+    start: a.start,
+    end: a.end,
+    particularValue: Number(a.particular_value || 0),
+    insuranceValue: Number(a.insurance_value || 0),
+    baseValue: Number(a.base_value || 0)
+  });
+
+  const mapAppointmentToSupabase = (a: Appointment) => ({
+    id: a.id,
+    patient_id: a.patientId,
+    professional_id: a.professionalId,
+    start: a.start,
+    end: a.end,
+    particular_value: a.particularValue,
+    insurance_value: a.insuranceValue,
+    base_value: a.baseValue
+  });
+
   const fetchData = useCallback(async () => {
     setIsLoadingData(true);
+    addLog('Sistema', 'success', 'Sincronizando con Guidari Cloud...');
+
     try {
-      const [
-        { data: usersData, error: uErr },
-        { data: patientsData, error: pErr },
-        { data: appointmentsData, error: aErr }
-      ] = await Promise.all([
+      const [{ data: uData, error: uErr }, { data: pData, error: pErr }, { data: aData, error: aErr }] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('patients').select('*'),
         supabase.from('appointments').select('*')
       ]);
 
-      if (uErr) addLog('Error Usuarios', 'error', uErr.message);
-      if (pErr) addLog('Error Pacientes', 'error', pErr.message);
-      if (aErr) addLog('Error Agenda', 'error', aErr.message);
+      if (uErr) addLog('Sync Usuarios', 'error', uErr);
+      else if (uData) {
+        const cloudUsers = uData.map(mapUserFromSupabase);
+        const mergedUsers = [...mockUsers];
+        cloudUsers.forEach(cu => {
+          const idx = mergedUsers.findIndex(mu => mu.id === cu.id || mu.email === cu.email);
+          if (idx !== -1) mergedUsers[idx] = { ...mergedUsers[idx], ...cu };
+          else mergedUsers.push(cu);
+        });
+        setProfessionals(mergedUsers);
+      }
 
-      if (usersData) setProfessionals(usersData as User[]);
-      if (patientsData) setPatients(patientsData as Patient[]);
-      if (appointmentsData) setAppointments(appointmentsData as Appointment[]);
-      
-      addLog('Sincronización', 'success', 'Base de datos Guidari Cloud actualizada correctamente.');
-    } catch (error: any) {
-      addLog('Sistema', 'error', 'Fallo crítico de conexión con Supabase.');
-      console.error('Fetch error:', error);
+      if (pErr) addLog('Sync Pacientes', 'error', pErr);
+      else if (pData) setPatients(pData.map(mapPatientFromSupabase));
+
+      if (aErr) addLog('Sync Agenda', 'error', aErr);
+      else if (aData) setAppointments(aData.map(mapAppointmentFromSupabase));
+
+    } catch (globalError: any) {
+      addLog('Sistema', 'error', 'Error de red fatal.');
     } finally {
       setIsLoadingData(false);
     }
@@ -82,11 +204,27 @@ const App: React.FC = () => {
 
   const saveToSupabase = async (table: string, data: any) => {
     try {
-      const { error } = await supabase.from(table).upsert(data);
-      if (error) throw error;
-      addLog(`Guardado ${table}`, 'success', `Cambios en ${table} persistidos en la nube.`);
+      let payload;
+      if (table === 'users') {
+        payload = Array.isArray(data) ? data.map(mapUserToSupabase) : mapUserToSupabase(data);
+      } else if (table === 'patients') {
+        const patientsData = Array.isArray(data) ? data : [data];
+        payload = patientsData.filter(p => isUUID(p.id)).map(mapPatientToSupabase);
+      } else if (table === 'appointments') {
+        const appointmentsData = Array.isArray(data) ? data : [data];
+        payload = appointmentsData.filter(a => isUUID(a.id) && isUUID(a.patientId)).map(mapAppointmentToSupabase);
+      }
+
+      if (!payload || (Array.isArray(payload) && payload.length === 0)) return;
+
+      const { error } = await supabase.from(table).upsert(payload);
+      if (error) {
+        addLog(`Error ${table}`, 'error', error);
+      } else {
+        addLog(`Guardado ${table}`, 'success', 'Nube actualizada.');
+      }
     } catch (error: any) {
-      addLog(`Error ${table}`, 'error', `Fallo al guardar en la nube: ${error.message}`);
+      addLog(`Sync ${table}`, 'error', error.message || error);
     }
   };
 
@@ -134,7 +272,7 @@ const App: React.FC = () => {
         </div>
         <div className="flex items-center gap-3 text-brand-navy">
           <Loader2 className="animate-spin" size={20} />
-          <span className="font-display font-bold uppercase tracking-widest text-xs">Conectando con Supabase...</span>
+          <span className="font-display font-bold uppercase tracking-widest text-xs">Conectando con Guidari Cloud...</span>
         </div>
       </div>
     );
@@ -147,11 +285,6 @@ const App: React.FC = () => {
   const filteredSidebarItems = sidebarItems.filter(item => item.roles.includes(currentUser.role));
 
   const renderContent = () => {
-    const currentTabConfig = sidebarItems.find(item => item.id === activeTab);
-    if (currentTabConfig && !currentTabConfig.roles.includes(currentUser.role)) {
-      setActiveTab('dashboard');
-    }
-
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard patients={patients} appointments={appointments} currentUser={currentUser} professionals={professionals} onAddAppointment={(a) => handleUpdateAppointments([...appointments, a])} />;
@@ -162,9 +295,9 @@ const App: React.FC = () => {
       case 'calendar':
         return <CalendarView appointments={appointments} patients={patients} professionals={professionals} currentUser={currentUser} onUpdate={handleUpdateAppointments} />;
       case 'documents':
-        return <DocumentsView patients={patients} onUpdatePatients={handleUpdatePatients} />;
+        return <DocumentsView patients={patients} professionals={professionals} onUpdatePatients={handleUpdatePatients} />;
       case 'finances':
-        return <FinanceView appointments={appointments} professionals={professionals} patients={patients} onUpdateProfessionals={handleUpdateProfessionals} />;
+        return <FinanceView appointments={appointments} professionals={professionals} patients={patients} onUpdateProfessionals={handleUpdateProfessionals} onUpdatePatients={handleUpdatePatients} />;
       case 'settings':
         return (
           <SettingsView 

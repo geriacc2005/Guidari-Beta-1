@@ -1,18 +1,19 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Patient, Document, DocType } from '../types';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Patient, Document, DocType, User } from '../types';
 import { 
   Search, Plus, FileText, Download, Trash2, X, UploadCloud, Filter, 
   CheckCircle2, AlertCircle, FileCheck, FileCode, FileSpreadsheet, 
-  ChevronDown, ChevronUp, ExternalLink, Calendar
+  ChevronDown, ChevronUp, Calendar, Stethoscope, User as UserIcon, Save
 } from 'lucide-react';
 
 interface DocumentsViewProps {
   patients: Patient[];
+  professionals: User[];
   onUpdatePatients: (patients: Patient[]) => void;
 }
 
-const DocumentsView: React.FC<DocumentsViewProps> = ({ patients, onUpdatePatients }) => {
+const DocumentsView: React.FC<DocumentsViewProps> = ({ patients, professionals, onUpdatePatients }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [filterType, setFilterType] = useState<DocType | 'Todos'>('Todos');
@@ -22,6 +23,7 @@ const DocumentsView: React.FC<DocumentsViewProps> = ({ patients, onUpdatePatient
   
   const [uploadData, setUploadData] = useState({
     patientId: '',
+    professionalId: '',
     type: DocType.FACTURA,
     name: '',
     amount: '' as any,
@@ -39,23 +41,45 @@ const DocumentsView: React.FC<DocumentsViewProps> = ({ patients, onUpdatePatient
     return () => window.removeEventListener('keydown', handleEsc);
   }, []);
 
-  const allDocuments: (Document & { patientName: string })[] = patients.flatMap(p => 
-    p.documents.map(d => ({ ...d, patientName: `${p.firstName} ${p.lastName}` }))
-  );
+  const allDocuments = useMemo(() => {
+    return patients.flatMap(p => 
+      p.documents.map(d => {
+        const pro = professionals.find(pr => pr.id === d.professionalId);
+        return { 
+          ...d, 
+          patientName: `${p.firstName} ${p.lastName}`,
+          proName: pro?.name || 'Profesional no asig.',
+          proAvatar: pro?.avatar
+        };
+      })
+    );
+  }, [patients, professionals]);
 
   const filteredDocs = allDocuments.filter(doc => {
     const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         doc.patientName.toLowerCase().includes(searchTerm.toLowerCase());
+                         doc.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         doc.proName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === 'Todos' || doc.type === filterType;
     return matchesSearch && matchesType;
   });
 
+  const assignedProsToSelectedPatient = useMemo(() => {
+    if (!uploadData.patientId) return [];
+    const p = patients.find(pat => pat.id === uploadData.patientId);
+    if (!p) return [];
+    return professionals.filter(pro => p.assignedProfessionals.includes(pro.id));
+  }, [uploadData.patientId, patients, professionals]);
+
   const handleUpload = () => {
-    if (!uploadData.patientId || (!uploadData.name && !selectedFile)) return;
+    if (!uploadData.patientId || !uploadData.professionalId || (!uploadData.name && !selectedFile)) {
+      alert("Faltan datos requeridos (Paciente, Profesional y Archivo).");
+      return;
+    }
 
     const newDoc: Document = {
       id: 'doc' + Math.random().toString(36).substr(2, 9),
       patientId: uploadData.patientId,
+      professionalId: uploadData.professionalId,
       type: uploadData.type,
       name: uploadData.name || (selectedFile ? selectedFile.name : 'Documento Sin Nombre'),
       date: new Date().toISOString().split('T')[0],
@@ -73,8 +97,23 @@ const DocumentsView: React.FC<DocumentsViewProps> = ({ patients, onUpdatePatient
 
     onUpdatePatients(updatedPatients);
     setShowUploadModal(false);
-    setUploadData({ patientId: '', type: DocType.FACTURA, name: '', amount: '', receiptNumber: '', isPaid: false });
+    setUploadData({ patientId: '', professionalId: '', type: DocType.FACTURA, name: '', amount: '', receiptNumber: '', isPaid: false });
     setSelectedFile(null);
+  };
+
+  const handleDeleteDocument = (docId: string, patientId: string) => {
+    if (!window.confirm('¿Está seguro de que desea eliminar este documento? Esta acción no se puede deshacer.')) return;
+    
+    const updatedPatients = patients.map(p => {
+      if (p.id === patientId) {
+        return {
+          ...p,
+          documents: p.documents.filter(d => d.id !== docId)
+        };
+      }
+      return p;
+    });
+    onUpdatePatients(updatedPatients);
   };
 
   const togglePaidStatus = (docId: string, patientId: string) => {
@@ -133,7 +172,7 @@ const DocumentsView: React.FC<DocumentsViewProps> = ({ patients, onUpdatePatient
           <Search className="text-brand-teal/40 mr-2 shrink-0" size={20} />
           <input 
             type="text" 
-            placeholder="Buscar por archivo o paciente..." 
+            placeholder="Buscar por archivo, paciente o profesional..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-transparent border-none py-3 sm:py-4 focus:outline-none text-brand-navy placeholder-brand-teal/40 font-medium text-sm"
@@ -158,7 +197,6 @@ const DocumentsView: React.FC<DocumentsViewProps> = ({ patients, onUpdatePatient
             key={doc.id} 
             className="bg-white rounded-[24px] sm:rounded-[40px] border border-brand-sage shadow-sm hover:shadow-md transition-all group overflow-hidden"
           >
-            {/* Cabecera Principal de la Tarjeta */}
             <div className="p-4 sm:p-6 flex items-center justify-between gap-4">
               <div className="flex items-center gap-4 min-w-0">
                 <div className={`p-3 rounded-xl sm:rounded-2xl ${getDocColors(doc.type).split(' ')[0]} shrink-0`}>
@@ -166,12 +204,15 @@ const DocumentsView: React.FC<DocumentsViewProps> = ({ patients, onUpdatePatient
                 </div>
                 <div className="min-w-0">
                   <h4 className="text-sm sm:text-lg font-bold text-brand-navy truncate group-hover:text-brand-coral transition-colors">{doc.name}</h4>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[10px] sm:text-xs font-medium text-brand-teal uppercase tracking-widest truncate">{doc.patientName}</span>
-                    <span className="hidden sm:inline text-brand-sage">•</span>
-                    <span className={`hidden sm:inline text-[9px] font-black px-2 py-0.5 rounded-lg border ${getDocColors(doc.type)}`}>
-                      {doc.type}
-                    </span>
+                  <div className="flex items-center gap-3 mt-1.5">
+                    <div className="flex items-center gap-1.5 bg-brand-beige px-2.5 py-1 rounded-lg">
+                      <UserIcon size={10} className="text-brand-navy/40" />
+                      <span className="text-[10px] font-black text-brand-navy uppercase tracking-tighter">{doc.patientName}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-brand-mint/20 px-2.5 py-1 rounded-lg">
+                      <Stethoscope size={10} className="text-brand-teal" />
+                      <span className="text-[10px] font-black text-brand-teal uppercase tracking-tighter">{doc.proName}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -185,30 +226,35 @@ const DocumentsView: React.FC<DocumentsViewProps> = ({ patients, onUpdatePatient
                 </button>
                 <div className="hidden sm:flex gap-2">
                    <a href={doc.url} download className="p-2 text-brand-teal/40 hover:text-brand-navy transition-all"><Download size={18} /></a>
-                   <button className="p-2 text-brand-teal/40 hover:text-red-500 transition-all"><Trash2 size={18} /></button>
+                   <button onClick={() => handleDeleteDocument(doc.id, doc.patientId)} className="p-2 text-brand-teal/40 hover:text-red-500 transition-all"><Trash2 size={18} /></button>
                 </div>
               </div>
             </div>
 
-            {/* Panel Expandible (Acordeón) */}
             {expandedId === doc.id && (
               <div className="px-6 pb-6 pt-2 animate-in slide-in-from-top-2 duration-300 border-t border-brand-beige/50">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 py-4">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 py-4">
                   <div className="space-y-1">
                     <p className="text-[9px] font-black text-brand-teal uppercase tracking-widest flex items-center gap-1.5"><Calendar size={10} /> Fecha</p>
                     <p className="text-xs font-bold text-brand-navy">{doc.date}</p>
                   </div>
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-black text-brand-teal uppercase tracking-widest flex items-center gap-1.5">Categoría</p>
+                    <span className={`inline-block text-[9px] font-black px-2 py-0.5 rounded-lg border ${getDocColors(doc.type)}`}>
+                      {doc.type.toUpperCase()}
+                    </span>
+                  </div>
                   {doc.type === DocType.FACTURA && (
                     <>
                       <div className="space-y-1">
-                        <p className="text-[9px] font-black text-brand-teal uppercase tracking-widest flex items-center gap-1.5">Monto</p>
-                        <p className="text-lg font-black text-brand-navy">${doc.amount?.toLocaleString()}</p>
+                        <p className="text-[9px] font-black text-brand-teal uppercase tracking-widest flex items-center gap-1.5">Monto Recibido</p>
+                        <p className="text-sm font-black text-brand-navy">${doc.amount?.toLocaleString()}</p>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-[9px] font-black text-brand-teal uppercase tracking-widest flex items-center gap-1.5">Estado Pago</p>
+                        <p className="text-[9px] font-black text-brand-teal uppercase tracking-widest flex items-center gap-1.5">Gestión de Cobro</p>
                         <button 
                           onClick={() => togglePaidStatus(doc.id, doc.patientId)}
-                          className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter transition-all ${
+                          className={`flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter transition-all ${
                             doc.status === 'pagada' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-50 text-red-600 border border-red-200'
                           }`}
                         >
@@ -224,7 +270,7 @@ const DocumentsView: React.FC<DocumentsViewProps> = ({ patients, onUpdatePatient
                   <a href={doc.url} download className="flex-1 bg-brand-navy text-white py-3 rounded-xl flex items-center justify-center gap-2 text-xs font-bold shadow-lg">
                     <Download size={16} /> Descargar
                   </a>
-                  <button className="p-3 text-red-500 bg-red-50 rounded-xl">
+                  <button onClick={() => handleDeleteDocument(doc.id, doc.patientId)} className="p-3 text-red-500 bg-red-50 rounded-xl">
                     <Trash2 size={18} />
                   </button>
                 </div>
@@ -237,7 +283,7 @@ const DocumentsView: React.FC<DocumentsViewProps> = ({ patients, onUpdatePatient
               <FileText size={48} className="text-brand-teal/20" />
             </div>
             <h3 className="text-xl font-display font-bold text-brand-navy">No se encontraron documentos</h3>
-            <p className="text-sm text-brand-teal mt-2 max-w-xs">Intenta ajustar los filtros o sube un nuevo archivo.</p>
+            <p className="text-sm text-brand-teal mt-2 max-w-xs">Intenta ajustar los filtros o sube un nuevo archivo PDF.</p>
           </div>
         )}
       </div>
@@ -246,54 +292,71 @@ const DocumentsView: React.FC<DocumentsViewProps> = ({ patients, onUpdatePatient
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-brand-navy/30 backdrop-blur-md p-4 sm:p-6 overflow-y-auto">
           <div className="bg-brand-beige w-full max-w-xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in duration-300 my-auto">
              <div className="p-6 sm:p-8 border-b border-brand-sage flex justify-between items-center bg-white/50">
-                <h3 className="text-xl sm:text-2xl font-display font-bold text-brand-navy">Subir PDF</h3>
-                <button onClick={() => setShowUploadModal(false)} className="text-brand-navy/30 hover:text-brand-coral transition-colors"><X size={24} /></button>
+                <h3 className="text-xl sm:text-2xl font-display font-bold text-brand-navy">Subir Documento</h3>
+                <button onClick={() => setShowUploadModal(false)} className="text-brand-navy/30 hover:text-brand-coral transition-colors p-2 hover:bg-white rounded-xl"><X size={24} /></button>
              </div>
              <div className="p-6 sm:p-10 space-y-6">
                 <div className="space-y-2">
-                   <label className="text-[10px] font-black text-brand-teal uppercase tracking-widest ml-2">Asociar a Paciente</label>
-                   <select className="w-full bg-white border border-brand-sage rounded-2xl p-4 text-sm font-medium outline-none" value={uploadData.patientId} onChange={e => setUploadData({...uploadData, patientId: e.target.value})}>
-                     <option value="">Seleccione Paciente</option>
+                   <label className="text-[10px] font-black text-brand-teal uppercase tracking-widest ml-2">1. Seleccionar Paciente</label>
+                   <select 
+                    className="w-full bg-white border border-brand-sage rounded-2xl p-4 text-sm font-medium outline-none focus:ring-4 focus:ring-brand-coral/5" 
+                    value={uploadData.patientId} 
+                    onChange={e => setUploadData({...uploadData, patientId: e.target.value, professionalId: ''})}
+                   >
+                     <option value="">Buscar Paciente...</option>
                      {patients.map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
+                   </select>
+                </div>
+
+                <div className="space-y-2">
+                   <label className="text-[10px] font-black text-brand-teal uppercase tracking-widest ml-2">2. Profesional Tratante</label>
+                   <select 
+                    className="w-full bg-white border border-brand-sage rounded-2xl p-4 text-sm font-medium outline-none focus:ring-4 focus:ring-brand-coral/5 disabled:opacity-50" 
+                    value={uploadData.professionalId} 
+                    disabled={!uploadData.patientId}
+                    onChange={e => setUploadData({...uploadData, professionalId: e.target.value})}
+                   >
+                     <option value="">{uploadData.patientId ? 'Seleccione profesional asignado...' : 'Primero seleccione un paciente'}</option>
+                     {assignedProsToSelectedPatient.map(pro => <option key={pro.id} value={pro.id}>{pro.name} ({pro.specialty})</option>)}
                    </select>
                 </div>
                 
                 <div className="space-y-2">
-                   <label className="text-[10px] font-black text-brand-teal uppercase tracking-widest ml-2">Tipo de Documento</label>
+                   <label className="text-[10px] font-black text-brand-teal uppercase tracking-widest ml-2">3. Tipo de Documento</label>
                    <div className="grid grid-cols-2 gap-2">
                      {Object.values(DocType).map(t => (
-                       <button key={t} onClick={() => setUploadData({...uploadData, type: t})} className={`py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest border-2 transition-all ${uploadData.type === t ? 'bg-brand-navy text-white border-brand-navy' : 'bg-white text-brand-teal border-brand-sage'}`}>{t}</button>
+                       <button key={t} onClick={() => setUploadData({...uploadData, type: t})} className={`py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest border-2 transition-all ${uploadData.type === t ? 'bg-brand-navy text-white border-brand-navy shadow-lg' : 'bg-white text-brand-teal border-brand-sage hover:border-brand-teal'}`}>{t}</button>
                      ))}
                    </div>
                 </div>
 
                 {uploadData.type === DocType.FACTURA && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in slide-in-from-top-2">
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-brand-coral uppercase tracking-widest ml-2">Monto ($)</label>
-                      <input type="number" className="w-full bg-white border border-brand-sage rounded-2xl p-4 text-sm font-bold" value={uploadData.amount} onChange={e => setUploadData({...uploadData, amount: e.target.value})} />
+                      <input type="number" className="w-full bg-white border border-brand-sage rounded-2xl p-4 text-sm font-bold shadow-inner" value={uploadData.amount} onChange={e => setUploadData({...uploadData, amount: e.target.value})} />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-brand-teal uppercase tracking-widest ml-2">N° Comprobante</label>
-                      <input type="text" className="w-full bg-white border border-brand-sage rounded-2xl p-4 text-sm font-bold" value={uploadData.receiptNumber} onChange={e => setUploadData({...uploadData, receiptNumber: e.target.value})} />
+                      <input type="text" className="w-full bg-white border border-brand-sage rounded-2xl p-4 text-sm font-bold shadow-inner" value={uploadData.receiptNumber} onChange={e => setUploadData({...uploadData, receiptNumber: e.target.value})} />
                     </div>
                   </div>
                 )}
 
                 <div 
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-4 border-dashed border-brand-sage rounded-[32px] p-8 flex flex-col items-center justify-center gap-4 text-brand-teal/40 bg-white/50 cursor-pointer hover:bg-brand-mint/10"
+                  className="border-4 border-dashed border-brand-sage rounded-[32px] p-8 flex flex-col items-center justify-center gap-4 text-brand-teal/40 bg-white/50 cursor-pointer hover:bg-brand-mint/10 hover:border-brand-teal transition-all group"
                 >
-                   <UploadCloud size={40} className={selectedFile ? 'text-brand-coral' : ''} />
-                   <p className="text-[10px] font-black uppercase tracking-widest text-center px-4">{selectedFile ? selectedFile.name : 'Adjuntar PDF'}</p>
+                   <UploadCloud size={40} className={`transition-all ${selectedFile ? 'text-brand-coral scale-110' : 'group-hover:scale-110'}`} />
+                   <p className="text-[10px] font-black uppercase tracking-widest text-center px-4 leading-relaxed">{selectedFile ? selectedFile.name : 'Haz clic para adjuntar archivo PDF'}</p>
                    <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => {
                      if (e.target.files?.[0]) setSelectedFile(e.target.files[0]);
                    }} />
                 </div>
              </div>
-             <div className="p-6 sm:p-8 bg-white/80 border-t border-brand-sage flex justify-end gap-4">
+             <div className="p-6 sm:p-8 bg-white/80 border-t border-brand-sage flex justify-end gap-4 shrink-0">
                 <button onClick={() => setShowUploadModal(false)} className="px-6 py-3 rounded-2xl font-bold text-brand-navy/40 hover:text-brand-coral transition-colors text-xs">Cancelar</button>
-                <button onClick={handleUpload} className="bg-brand-navy text-white px-8 py-3 rounded-2xl font-bold shadow-xl hover:scale-[1.02] text-xs">Subir</button>
+                <button onClick={handleUpload} className="bg-brand-navy text-white px-10 py-3 rounded-2xl font-bold shadow-xl hover:scale-[1.02] transition-all flex items-center gap-2 text-xs"><Save size={16} /> Subir Documento</button>
              </div>
           </div>
         </div>

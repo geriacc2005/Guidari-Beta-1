@@ -3,6 +3,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Appointment, Patient, User, UserRole } from '../types';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Plus, X, Users, User as UserIcon } from 'lucide-react';
 
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
 interface CalendarViewProps {
   appointments: Appointment[];
   patients: Patient[];
@@ -11,11 +19,10 @@ interface CalendarViewProps {
   onUpdate: (appts: Appointment[]) => void;
 }
 
-// Helpers extraídos para legibilidad y rendimiento
 const getStartOfWeek = (date: Date) => {
   const d = new Date(date);
   const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Ajuste para que empiece el lunes
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   return new Date(d.setDate(diff));
 };
 
@@ -64,7 +71,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ appointments, patients, pro
   }, [appointments, isAdmin, currentUser.id]);
 
   const weekDays = useMemo(() => getDaysInWeek(getStartOfWeek(currentDate)), [currentDate]);
-  const hours = Array.from({ length: 13 }, (_, i) => i + 8); // 8:00 a 20:00
+  const hours = Array.from({ length: 13 }, (_, i) => i + 8);
 
   const handleNavigate = (direction: number) => {
     const nextDate = new Date(currentDate);
@@ -87,7 +94,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ appointments, patients, pro
     const end = new Date(new Date(start).getTime() + 60 * 60 * 1000).toISOString();
     
     const appt: Appointment = {
-      id: 'a' + Math.random().toString(36).substr(2, 9),
+      id: generateUUID(),
       patientId: newSession.patientId,
       professionalId: targetProId,
       start,
@@ -103,6 +110,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ appointments, patients, pro
 
   const onCellClick = (date: Date) => {
     setSelectedDate(date);
+    setNewSession(prev => ({ ...prev, date: date.toISOString().split('T')[0] }));
   };
 
   return (
@@ -121,7 +129,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({ appointments, patients, pro
       </div>
 
       <div className="flex flex-col lg:flex-row gap-8 flex-1 overflow-hidden">
-        {/* AGENDA PRINCIPAL */}
         <div className="lg:col-span-8 bg-white rounded-[40px] border border-brand-sage shadow-sm overflow-hidden flex flex-col flex-1">
           <div className="p-6 border-b border-brand-sage flex justify-between items-center bg-brand-beige/20 shrink-0">
             <div className="flex items-center gap-4">
@@ -215,7 +222,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({ appointments, patients, pro
           </div>
         </div>
 
-        {/* DETALLES DEL DÍA SELECCIONADO */}
         <div className="w-full lg:w-80 bg-white rounded-[40px] border border-brand-sage shadow-sm overflow-hidden flex flex-col shrink-0 transition-all">
           <div className="p-8 bg-brand-navy text-white shrink-0">
             <h4 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-60 mb-2">Pacientes del Día</h4>

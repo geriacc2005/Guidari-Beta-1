@@ -1,7 +1,15 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, Patient, Appointment, UserRole, DocType } from '../types';
-import { Users, CheckCircle2, Timer, Calendar as CalendarIcon, Clock, Plus, X, AlertTriangle, Cake, Gift, PartyPopper } from 'lucide-react';
+import { Users, CheckCircle2, Timer, Calendar as CalendarIcon, Clock, Plus, X, AlertTriangle, Cake, Gift, PartyPopper, Stethoscope } from 'lucide-react';
+
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
 
 interface DashboardProps {
   patients: Patient[];
@@ -73,21 +81,44 @@ const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, currentUs
   }).length;
 
   const missingDocsData = useMemo(() => {
-    if (!isAdmin) return []; // Los profesionales no ven alertas administrativas de otros
-    return patients.map(p => {
-      const monthlyDocs = p.documents.filter(d => {
-        const docDate = new Date(d.date);
-        return docDate.getMonth() === currentMonth && docDate.getFullYear() === currentYear;
+    if (!isAdmin) return [];
+    
+    const results: { patient: Patient, missing: { proName: string, docs: string[] }[] }[] = [];
+
+    patients.forEach(p => {
+      const patientMissing: { proName: string, docs: string[] }[] = [];
+      
+      // Chequeo por cada profesional asignado al paciente
+      p.assignedProfessionals.forEach(proId => {
+        const pro = professionals.find(u => u.id === proId);
+        if (!pro) return;
+
+        const monthlyDocsForPro = p.documents.filter(d => {
+          const docDate = new Date(d.date);
+          return d.professionalId === proId && 
+                 docDate.getMonth() === currentMonth && 
+                 docDate.getFullYear() === currentYear;
+        });
+
+        const hasFactura = monthlyDocsForPro.some(d => d.type === DocType.FACTURA);
+        const hasPlanilla = monthlyDocsForPro.some(d => d.type === DocType.PLANILLA || d.type === DocType.INFORME);
+        
+        const missingForThisPro = [];
+        if (!hasFactura) missingForThisPro.push("Factura");
+        if (!hasPlanilla) missingForThisPro.push("Planilla");
+
+        if (missingForThisPro.length > 0) {
+          patientMissing.push({ proName: pro.firstName, docs: missingForThisPro });
+        }
       });
-      const hasFactura = monthlyDocs.some(d => d.type === DocType.FACTURA);
-      const hasPlanilla = monthlyDocs.some(d => d.type === DocType.PLANILLA || d.type === DocType.INFORME);
-      const missing = [];
-      if (!hasFactura) missing.push("Factura");
-      if (!hasPlanilla) missing.push("Planilla");
-      if (missing.length === 0) return null;
-      return { patient: p, missing };
-    }).filter(item => item !== null) as { patient: Patient, missing: string[] }[];
-  }, [patients, isAdmin, currentMonth, currentYear]);
+
+      if (patientMissing.length > 0) {
+        results.push({ patient: p, missing: patientMissing });
+      }
+    });
+
+    return results;
+  }, [patients, professionals, isAdmin, currentMonth, currentYear]);
 
   const handleCreateSession = () => {
     const targetProId = isAdmin ? newSession.professionalId : currentUser.id;
@@ -96,7 +127,7 @@ const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, currentUs
     const start = `${newSession.date}T${newSession.time}:00`;
     const end = new Date(new Date(start).getTime() + 60 * 60 * 1000).toISOString();
     const appt: Appointment = {
-      id: 'a' + Math.random().toString(36).substr(2, 9),
+      id: generateUUID(),
       patientId: newSession.patientId,
       professionalId: targetProId,
       start,
@@ -163,16 +194,25 @@ const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, currentUs
              <AlertTriangle size={24} />
            </div>
            <div>
-             <h4 className="text-red-600 font-black uppercase text-xs tracking-widest mb-1">Alerta de Documentación Mensual</h4>
-             <p className="text-sm text-red-700 font-medium">Se detectó falta de documentación obligatoria en {missingDocsData.length} pacientes:</p>
-             <div className="flex flex-wrap gap-2 mt-3">
-               {missingDocsData.slice(0, 5).map(item => (
-                 <span key={item.patient.id} className="bg-white px-3 py-1.5 rounded-xl text-[10px] font-bold text-red-600 border border-red-200 flex flex-col">
-                   <span>{item.patient.firstName} {item.patient.lastName}</span>
-                   <span className="text-[8px] opacity-60 uppercase">Falta: {item.missing.join(" y ")}</span>
-                 </span>
+             <h4 className="text-red-600 font-black uppercase text-xs tracking-widest mb-1">Alerta de Documentación por Profesional</h4>
+             <p className="text-sm text-red-700 font-medium">Faltan documentos obligatorios (2 por profesional) para el mes actual:</p>
+             <div className="flex flex-wrap gap-3 mt-4">
+               {missingDocsData.slice(0, 4).map(item => (
+                 <div key={item.patient.id} className="bg-white p-4 rounded-2xl border border-red-200 shadow-sm min-w-[200px]">
+                   <p className="text-[10px] font-black text-brand-navy uppercase mb-2">{item.patient.firstName} {item.patient.lastName}</p>
+                   <div className="space-y-2">
+                      {item.missing.map((m, i) => (
+                        <div key={i} className="flex flex-col">
+                          <span className="text-[9px] font-bold text-brand-teal flex items-center gap-1">
+                            <Stethoscope size={10} /> {m.proName}
+                          </span>
+                          <span className="text-[8px] font-black text-red-400 uppercase tracking-tighter">Falta: {m.docs.join(" y ")}</span>
+                        </div>
+                      ))}
+                   </div>
+                 </div>
                ))}
-               {missingDocsData.length > 5 && <span className="text-[10px] text-red-400 font-bold self-center">y {missingDocsData.length - 5} más...</span>}
+               {missingDocsData.length > 4 && <span className="text-[10px] text-red-400 font-black self-center uppercase tracking-widest">+{missingDocsData.length - 4} Pacientes más</span>}
              </div>
            </div>
         </div>

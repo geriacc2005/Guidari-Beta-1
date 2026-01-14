@@ -1,7 +1,17 @@
 
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
+import { mockUsers } from '../mockData'; // Importación vital para el fallback de acceso
 import { Mail, Lock, User as UserIcon, ArrowRight, ShieldCheck, Heart, Key, AlertCircle } from 'lucide-react';
+
+// Helper local para generar UUIDs si se necesita durante el registro
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
 
 interface AuthProps {
   onLogin: (user: User) => void;
@@ -22,6 +32,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin, users, onRegister }) => {
 
   const logoUrl = "https://zugbripyvaidkpesrvaa.supabase.co/storage/v1/object/sign/Imagenes/Guidari%20sin%20fondo.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9kMmViNTc1OC0yY2UyLTRkODgtOGQ5MC1jZWFiYTM1MjY1Y2IiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJJbWFnZW5lcy9HdWlkYXJpIHNpbiBmb25kby5wbmciLCJpYXQiOjE3NjgzNDI2MjIsImV4cCI6MjM5OTA2MjYyMn0.0r_lpPOfT1oMZxTGa4YLu57M5VPrmTT_VJsma7EpoX8";
 
+  const ADMIN_EMAIL = 'crisfreuter@gmail.com';
+
   const handleAuth = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -32,14 +44,28 @@ const Auth: React.FC<AuthProps> = ({ onLogin, users, onRegister }) => {
           setError('Ingrese su PIN de seguridad.');
           return;
         }
-        const user = users.find(u => u.pin === pin);
+        // Buscar en lista dinámica (Supabase)
+        let user = users.find(u => u.pin === pin);
+        
+        // Fallback para Administrador si no se encuentra en la lista dinámica
+        if (!user) {
+          user = mockUsers.find(u => u.email === ADMIN_EMAIL && u.pin === pin);
+        }
+
         if (user) {
           onLogin(user);
         } else {
           setError('PIN incorrecto o no configurado.');
         }
       } else {
-        const user = users.find(u => u.email === email && u.password === password);
+        // Buscar en lista dinámica (Supabase)
+        let user = users.find(u => u.email === email && u.password === password);
+        
+        // Fallback de Emergencia para Administrador Maestro
+        if (!user && email === ADMIN_EMAIL) {
+          user = mockUsers.find(u => u.email === email && u.password === password);
+        }
+
         if (user) {
           onLogin(user);
         } else {
@@ -47,13 +73,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin, users, onRegister }) => {
         }
       }
     } else {
-      // Validación de campos obligatorios para Registro
       if (!email || !password || !firstName || !lastName || !regPin) {
-        setError('Por favor complete todos los campos obligatorios, incluyendo el PIN.');
+        setError('Por favor complete todos los campos obligatorios.');
         return;
       }
 
-      // Validación estricta del PIN (numérico y longitud)
       const isNumeric = /^\d+$/.test(regPin);
       if (!isNumeric) {
         setError('El PIN debe contener solo números.');
@@ -71,7 +95,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, users, onRegister }) => {
       }
 
       const newUser: User = {
-        id: 'u' + (users.length + 1),
+        id: generateUUID(), // AHORA GENERA UUID VÁLIDO PARA SUPABASE
         email,
         password,
         pin: regPin,

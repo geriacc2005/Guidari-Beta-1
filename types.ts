@@ -30,6 +30,7 @@ export enum DocType {
 export interface Document {
   id: string;
   patientId: string;
+  professionalId: string; // Vinculación obligatoria al staff
   type: DocType;
   name: string;
   date: string;
