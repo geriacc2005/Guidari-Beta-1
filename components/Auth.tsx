@@ -110,7 +110,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin, users, onRegister }) => {
       <div className="w-full max-w-4xl bg-white rounded-[56px] shadow-2xl overflow-hidden flex flex-col md:flex-row animate-in fade-in zoom-in duration-700">
         <div className="w-full md:w-1/2 bg-brand-navy p-12 flex flex-col items-center justify-center text-center relative">
           <div className="relative z-10 space-y-8">
-            <div className="w-48 h-48 mx-auto bg-white/5 rounded-[48px] p-4 flex items-center justify-center backdrop-blur-sm border border-white/10">
+            {/* Contenedor del logo con fondo claro ajustado */}
+            <div className="w-48 h-48 mx-auto bg-white/95 rounded-[48px] p-6 flex items-center justify-center shadow-2xl border border-white/20">
               <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
             </div>
             <div>
