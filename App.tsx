@@ -34,48 +34,7 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<SupabaseLog[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
-  // Carga inicial de datos desde Supabase
-  const fetchData = useCallback(async () => {
-    setIsLoadingData(true);
-    try {
-      const [
-        { data: usersData },
-        { data: patientsData },
-        { data: appointmentsData }
-      ] = await Promise.all([
-        supabase.from('users').select('*'),
-        supabase.from('patients').select('*'),
-        supabase.from('appointments').select('*')
-      ]);
-
-      if (usersData && usersData.length > 0) setProfessionals(usersData as User[]);
-      if (patientsData) setPatients(patientsData as Patient[]);
-      if (appointmentsData) setAppointments(appointmentsData as Appointment[]);
-      
-      addLog('Sistema', 'success', 'Datos sincronizados desde la nube.');
-    } catch (error) {
-      addLog('Sistema', 'error', 'Error al cargar datos de la nube.');
-      console.error('Fetch error:', error);
-    } finally {
-      setIsLoadingData(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // Sincronización automática de fondo
-  useEffect(() => {
-    if (isAuthenticated) {
-      const interval = setInterval(() => {
-        fetchData(); // Sync Pull
-      }, 10 * 60 * 1000); // Cada 10 min
-      return () => clearInterval(interval);
-    }
-  }, [isAuthenticated, fetchData]);
-
-  const addLog = (action: string, status: 'success' | 'error', message: string) => {
+  const addLog = useCallback((action: string, status: 'success' | 'error', message: string) => {
     const newLog: SupabaseLog = {
       id: Math.random().toString(36).substr(2, 9),
       timestamp: new Date().toLocaleTimeString(),
@@ -84,15 +43,50 @@ const App: React.FC = () => {
       message
     };
     setLogs(prev => [newLog, ...prev].slice(0, 50));
-  };
+  }, []);
+
+  // Carga real de datos desde Supabase
+  const fetchData = useCallback(async () => {
+    setIsLoadingData(true);
+    try {
+      const [
+        { data: usersData, error: uErr },
+        { data: patientsData, error: pErr },
+        { data: appointmentsData, error: aErr }
+      ] = await Promise.all([
+        supabase.from('users').select('*'),
+        supabase.from('patients').select('*'),
+        supabase.from('appointments').select('*')
+      ]);
+
+      if (uErr) addLog('Error Usuarios', 'error', uErr.message);
+      if (pErr) addLog('Error Pacientes', 'error', pErr.message);
+      if (aErr) addLog('Error Agenda', 'error', aErr.message);
+
+      if (usersData) setProfessionals(usersData as User[]);
+      if (patientsData) setPatients(patientsData as Patient[]);
+      if (appointmentsData) setAppointments(appointmentsData as Appointment[]);
+      
+      addLog('Sincronización', 'success', 'Base de datos Guidari Cloud actualizada correctamente.');
+    } catch (error: any) {
+      addLog('Sistema', 'error', 'Fallo crítico de conexión con Supabase.');
+      console.error('Fetch error:', error);
+    } finally {
+      setIsLoadingData(false);
+    }
+  }, [addLog]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const saveToSupabase = async (table: string, data: any) => {
     try {
       const { error } = await supabase.from(table).upsert(data);
       if (error) throw error;
-      addLog(`Guardado ${table}`, 'success', 'Cambios persistidos en Supabase.');
-    } catch (error) {
-      addLog(`Error ${table}`, 'error', 'Error al guardar en la nube.');
+      addLog(`Guardado ${table}`, 'success', `Cambios en ${table} persistidos en la nube.`);
+    } catch (error: any) {
+      addLog(`Error ${table}`, 'error', `Fallo al guardar en la nube: ${error.message}`);
     }
   };
 
@@ -140,7 +134,7 @@ const App: React.FC = () => {
         </div>
         <div className="flex items-center gap-3 text-brand-navy">
           <Loader2 className="animate-spin" size={20} />
-          <span className="font-display font-bold uppercase tracking-widest text-xs">Sincronizando con Guidari Cloud...</span>
+          <span className="font-display font-bold uppercase tracking-widest text-xs">Conectando con Supabase...</span>
         </div>
       </div>
     );
@@ -187,6 +181,7 @@ const App: React.FC = () => {
             logs={logs}
             addLog={addLog}
             onUpdateCurrentUser={setCurrentUser}
+            onRefreshData={fetchData}
           />
         );
       default:
@@ -194,14 +189,12 @@ const App: React.FC = () => {
     }
   };
 
-  const logoUrl = "https://zugbripyvaidkpesrvaa.supabase.co/storage/v1/object/sign/Imagenes/Guidari%20sin%20fondo.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9kMmViNTc1OC0yY2UyLTRkODgtOGQ5MC1jZWFiYTM1MjY1Y2IiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJJbWFnZW5lcy9HdWlkYXJpIHNpbiBmb25kby5wbmciLCJpYXQiOjE3NjgzNDI2MjIsImV4cCI6MjM5OTA2MjYyMn0.0r_lpPOfT1oMZxTGa4YLu57M5VPrmTT_VJsma7EpoX8";
-
   return (
     <div className="flex min-h-screen font-sans text-brand-navy">
       <aside className={`${isSidebarOpen ? 'w-80' : 'w-24'} bg-white border-r border-brand-sage flex flex-col transition-all duration-300 z-50 shadow-sm`}>
         <div className="p-8 flex flex-col items-center">
           <div className={`${isSidebarOpen ? 'w-52 h-52' : 'w-20 h-20'} mb-6 transition-all duration-500 flex items-center justify-center`}>
-             <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
+             <img src="https://zugbripyvaidkpesrvaa.supabase.co/storage/v1/object/sign/Imagenes/Guidari%20sin%20fondo.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9kMmViNTc1OC0yY2UyLTRkODgtOGQ5MC1jZWFiYTM1MjY1Y2IiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJJbWFnZW5lcy9HdWlkYXJpIHNpbiBmb25kby5wbmciLCJpYXQiOjE3NjgzNDI2MjIsImV4cCI6MjM5OTA2MjYyMn0.0r_lpPOfT1oMZxTGa4YLu57M5VPrmTT_VJsma7EpoX8" alt="Logo" className="w-full h-full object-contain" />
           </div>
           {isSidebarOpen && (
             <div className="text-center">
