@@ -534,23 +534,66 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
                     
                     <div className="bg-black/40 rounded-[40px] p-8 border border-white/5 font-mono text-[11px] text-brand-mint/80 overflow-x-auto max-h-[300px] shadow-inner">
-                       <pre><code>{`CREATE TABLE IF NOT EXISTS users (
+                       <pre><code>{`
+-- Esquema completo para Guidari Center Rehabilitation Management
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 1. Tabla de Usuarios (Administradores y Staff)
+CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email TEXT UNIQUE NOT NULL,
-    role TEXT CHECK (role IN ('ADMIN', 'PROFESSIONAL')),
-    specialty TEXT,
-    session_value DECIMAL(12,2),
-    pin TEXT,
-    password TEXT
-);
-
-CREATE TABLE IF NOT EXISTS patients (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    password TEXT,
+    pin TEXT, -- Acceso rápido
     first_name TEXT,
     last_name TEXT,
+    name TEXT, -- Nombre calculado
+    role TEXT CHECK (role IN ('ADMIN', 'PROFESSIONAL')),
+    avatar TEXT, -- Base64 o URL
+    specialty TEXT,
+    session_value DECIMAL(12,2) DEFAULT 0,
+    commission_rate DECIMAL(5,2) DEFAULT 60, -- Porcentaje para profesional
+    dob DATE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 2. Tabla de Pacientes (Legajos)
+CREATE TABLE IF NOT EXISTS patients (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    date_of_birth DATE,
     diagnosis TEXT,
-    assigned_professionals TEXT[]
-);`}</code></pre>
+    insurance TEXT DEFAULT 'Particular',
+    avatar TEXT,
+    affiliate_number TEXT,
+    school TEXT,
+    support_teacher JSONB DEFAULT '{}', -- {name, phone, email}
+    therapeutic_companion JSONB DEFAULT '{}', -- {name, phone, email}
+    responsible JSONB DEFAULT '{}', -- {name, address, phone, email}
+    assigned_professionals UUID[] DEFAULT '{}', -- Relación Staff
+    clinical_history JSONB DEFAULT '[]', -- Notas clínicas [{id, date, proId, content}]
+    documents JSONB DEFAULT '[]', -- [{id, type, name, date, url, amount, status}]
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 3. Tabla de Turnos (Agenda)
+CREATE TABLE IF NOT EXISTS appointments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
+    professional_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    start TIMESTAMP WITH TIME ZONE NOT NULL,
+    "end" TIMESTAMP WITH TIME ZONE NOT NULL,
+    particular_value DECIMAL(12,2) DEFAULT 0,
+    insurance_value DECIMAL(12,2) DEFAULT 0,
+    base_value DECIMAL(12,2) DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Indices para optimización de búsqueda
+CREATE INDEX idx_patients_name ON patients(first_name, last_name);
+CREATE INDEX idx_appointments_start ON appointments(start);
+CREATE INDEX idx_users_email ON users(email);`}</code></pre>
                     </div>
                 </div>
               </div>

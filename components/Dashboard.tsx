@@ -88,7 +88,6 @@ const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, currentUs
     patients.forEach(p => {
       const patientMissing: { proName: string, docs: string[] }[] = [];
       
-      // Chequeo por cada profesional asignado al paciente
       p.assignedProfessionals.forEach(proId => {
         const pro = professionals.find(u => u.id === proId);
         if (!pro) return;
@@ -108,7 +107,8 @@ const Dashboard: React.FC<DashboardProps> = ({ patients, appointments, currentUs
         if (!hasPlanilla) missingForThisPro.push("Planilla");
 
         if (missingForThisPro.length > 0) {
-          patientMissing.push({ proName: pro.firstName, docs: missingForThisPro });
+          // Cambiado de pro.firstName a pro.name para mostrar el nombre completo
+          patientMissing.push({ proName: pro.name, docs: missingForThisPro });
         }
       });
 

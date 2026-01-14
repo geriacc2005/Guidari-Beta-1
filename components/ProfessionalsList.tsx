@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { User, UserRole, Appointment, Patient } from '../types';
-import { Mail, ShieldCheck, X, Plus, Calendar, Camera, DollarSign, Award, Clock, UserCheck, Upload, Image as ImageIcon, Lock, Key, Edit2, Save } from 'lucide-react';
+import { Mail, ShieldCheck, X, Plus, Calendar, Camera, DollarSign, Award, Clock, UserCheck, Upload, Image as ImageIcon, Lock, Key, Edit2, Save, Trash2 } from 'lucide-react';
 
 // Helper para generar UUIDs válidos para Supabase
 const generateUUID = () => {
@@ -18,9 +18,11 @@ interface ProfessionalsListProps {
   patients: Patient[];
   currentUser: User;
   onUpdate: (users: User[]) => void;
+  // Added onDeletePro prop to fix TypeScript error in App.tsx
+  onDeletePro?: (id: string) => void;
 }
 
-const ProfessionalsList: React.FC<ProfessionalsListProps> = ({ professionals, appointments, patients, currentUser, onUpdate }) => {
+const ProfessionalsList: React.FC<ProfessionalsListProps> = ({ professionals, appointments, patients, currentUser, onUpdate, onDeletePro }) => {
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedProAgenda, setSelectedProAgenda] = useState<User | null>(null);
@@ -80,6 +82,18 @@ const ProfessionalsList: React.FC<ProfessionalsListProps> = ({ professionals, ap
     setShowModal(true);
   };
 
+  // Added handleDelete function for professionals to resolve delete action requirement
+  const handleDelete = (id: string) => {
+    if (!isAdmin) return;
+    if (id === currentUser.id) {
+      alert("No puedes eliminar tu propio usuario.");
+      return;
+    }
+    if (window.confirm("¿Confirmas la eliminación permanente del profesional?")) {
+      onDeletePro?.(id);
+    }
+  };
+
   const handleSavePro = () => {
     if (!formData.firstName || !formData.lastName || !formData.email || !formData.password || !formData.pin) {
         alert('Por favor, complete los campos obligatorios (Nombre, Apellido, Email, Contraseña y PIN).');
@@ -128,6 +142,16 @@ const ProfessionalsList: React.FC<ProfessionalsListProps> = ({ professionals, ap
             <div key={pro.id} className="bg-white rounded-[40px] p-8 border border-brand-sage shadow-sm hover:shadow-xl hover:shadow-brand-navy/5 transition-all relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-24 h-24 bg-brand-mint/10 rounded-bl-[60px] group-hover:bg-brand-coral/10 transition-colors"></div>
               
+              {/* Added Delete Button for Admins to allow record removal */}
+              {isAdmin && pro.id !== currentUser.id && (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleDelete(pro.id); }}
+                  className="absolute top-4 right-4 p-2 text-brand-teal/40 hover:text-red-500 transition-colors z-20"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
+
               <div className="flex flex-col items-center text-center relative z-10">
                 <div className="relative mb-6">
                   <img src={pro.avatar} alt={pro.name} className="w-16 h-16 rounded-[24px] object-cover shadow-lg ring-4 ring-brand-beige group-hover:scale-105 transition-transform" />

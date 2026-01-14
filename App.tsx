@@ -46,22 +46,12 @@ const App: React.FC = () => {
 
   const addLog = useCallback((action: string, status: 'success' | 'error', message: any) => {
     let displayMessage = '';
-    
     if (message && typeof message === 'object') {
       const errorData = message.error || message;
-      if (errorData.message) {
-        displayMessage = `${errorData.code || 'DB'}: ${errorData.message} ${errorData.details ? `(${errorData.details})` : ''}`;
-      } else {
-        try {
-          displayMessage = JSON.stringify(errorData);
-        } catch (e) {
-          displayMessage = 'Error complejo de base de datos';
-        }
-      }
+      displayMessage = errorData.message || JSON.stringify(errorData);
     } else {
       displayMessage = String(message || 'Operación finalizada');
     }
-
     const newLog: SupabaseLog = {
       id: generateUUID(),
       timestamp: new Date().toLocaleTimeString(),
@@ -164,94 +154,73 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     setIsLoadingData(true);
-    addLog('Sistema', 'success', 'Sincronizando con Guidari Cloud...');
-
     try {
-      const [{ data: uData, error: uErr }, { data: pData, error: pErr }, { data: aData, error: aErr }] = await Promise.all([
+      const [{ data: uData }, { data: pData }, { data: aData }] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('patients').select('*'),
         supabase.from('appointments').select('*')
       ]);
-
-      if (uErr) addLog('Sync Usuarios', 'error', uErr);
-      else if (uData) {
+      if (uData) {
         const cloudUsers = uData.map(mapUserFromSupabase);
-        const mergedUsers = [...mockUsers];
+        const merged = [...mockUsers];
         cloudUsers.forEach(cu => {
-          const idx = mergedUsers.findIndex(mu => mu.id === cu.id || mu.email === cu.email);
-          if (idx !== -1) mergedUsers[idx] = { ...mergedUsers[idx], ...cu };
-          else mergedUsers.push(cu);
+          const idx = merged.findIndex(mu => mu.id === cu.id);
+          if (idx !== -1) merged[idx] = cu;
+          else merged.push(cu);
         });
-        setProfessionals(mergedUsers);
+        setProfessionals(merged);
       }
-
-      if (pErr) addLog('Sync Pacientes', 'error', pErr);
-      else if (pData) setPatients(pData.map(mapPatientFromSupabase));
-
-      if (aErr) addLog('Sync Agenda', 'error', aErr);
-      else if (aData) setAppointments(aData.map(mapAppointmentFromSupabase));
-
-    } catch (globalError: any) {
-      addLog('Sistema', 'error', 'Error de red fatal.');
+      if (pData) setPatients(pData.map(mapPatientFromSupabase));
+      if (aData) setAppointments(aData.map(mapAppointmentFromSupabase));
+    } catch (err) {
+      addLog('Sistema', 'error', 'Fallo al conectar con la base de datos');
     } finally {
       setIsLoadingData(false);
     }
   }, [addLog]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const saveToSupabase = async (table: string, data: any) => {
     try {
       let payload;
-      if (table === 'users') {
-        payload = Array.isArray(data) ? data.map(mapUserToSupabase) : mapUserToSupabase(data);
-      } else if (table === 'patients') {
-        const patientsData = Array.isArray(data) ? data : [data];
-        payload = patientsData.filter(p => isUUID(p.id)).map(mapPatientToSupabase);
-      } else if (table === 'appointments') {
-        const appointmentsData = Array.isArray(data) ? data : [data];
-        payload = appointmentsData.filter(a => isUUID(a.id) && isUUID(a.patientId)).map(mapAppointmentToSupabase);
-      }
-
+      if (table === 'users') payload = Array.isArray(data) ? data.map(mapUserToSupabase) : mapUserToSupabase(data);
+      else if (table === 'patients') payload = (Array.isArray(data) ? data : [data]).filter(p => isUUID(p.id)).map(mapPatientToSupabase);
+      else if (table === 'appointments') payload = (Array.isArray(data) ? data : [data]).filter(a => isUUID(a.id)).map(mapAppointmentToSupabase);
+      
       if (!payload || (Array.isArray(payload) && payload.length === 0)) return;
-
       const { error } = await supabase.from(table).upsert(payload);
-      if (error) {
-        addLog(`Error ${table}`, 'error', error);
+      if (!error) addLog(`Guardado ${table}`, 'success', 'Sincronizado');
+    } catch (err: any) { addLog(`Sync ${table}`, 'error', err.message); }
+  };
+
+  const deleteFromSupabase = async (table: string, id: string) => {
+    try {
+      const { error } = await supabase.from(table).delete().eq('id', id);
+      if (!error) {
+        addLog(`Eliminado ${table}`, 'success', `Registro ${id} removido`);
+        if (table === 'patients') setPatients(prev => prev.filter(p => p.id !== id));
+        if (table === 'appointments') setAppointments(prev => prev.filter(a => a.id !== id));
+        if (table === 'users') setProfessionals(prev => prev.filter(u => u.id !== id));
       } else {
-        addLog(`Guardado ${table}`, 'success', 'Nube actualizada.');
+        addLog(`Error eliminando ${table}`, 'error', error);
       }
-    } catch (error: any) {
-      addLog(`Sync ${table}`, 'error', error.message || error);
-    }
+    } catch (err: any) { addLog(`Delete ${table}`, 'error', err.message); }
   };
 
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    setIsAuthenticated(true);
+  const handleUpdatePatients = async (updated: Patient[]) => {
+    setPatients(updated);
+    await saveToSupabase('patients', updated);
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setIsAuthenticated(false);
-    setActiveTab('dashboard');
+  const handleUpdateProfessionals = async (updated: User[]) => {
+    setProfessionals(updated);
+    await saveToSupabase('users', updated);
   };
 
-  const handleUpdatePatients = async (updatedPatients: Patient[]) => {
-    setPatients(updatedPatients);
-    await saveToSupabase('patients', updatedPatients);
-  };
-
-  const handleUpdateProfessionals = async (updatedPros: User[]) => {
-    setProfessionals(updatedPros);
-    await saveToSupabase('users', updatedPros);
-  };
-
-  const handleUpdateAppointments = async (updatedAppts: Appointment[]) => {
-    setAppointments(updatedAppts);
-    await saveToSupabase('appointments', updatedAppts);
+  const handleUpdateAppointments = async (updated: Appointment[]) => {
+    setAppointments(updated);
+    await saveToSupabase('appointments', updated);
   };
 
   const sidebarItems = [
@@ -259,7 +228,7 @@ const App: React.FC = () => {
     { id: 'patients', label: 'Pacientes', icon: Users, roles: [UserRole.ADMIN, UserRole.PROFESSIONAL] },
     { id: 'calendar', label: 'Agenda', icon: Calendar, roles: [UserRole.ADMIN, UserRole.PROFESSIONAL] },
     { id: 'documents', label: 'Documentos', icon: FileText, roles: [UserRole.ADMIN, UserRole.PROFESSIONAL] },
-    { id: 'professionals', label: 'Profesionales', icon: Stethoscope, roles: [UserRole.ADMIN] }, 
+    { id: 'professionals', label: 'Staff', icon: Stethoscope, roles: [UserRole.ADMIN] }, 
     { id: 'finances', label: 'Finanzas', icon: Wallet, roles: [UserRole.ADMIN] },
     { id: 'settings', label: 'Configuración', icon: Settings, roles: [UserRole.ADMIN, UserRole.PROFESSIONAL] },
   ];
@@ -267,58 +236,28 @@ const App: React.FC = () => {
   if (isLoadingData && !isAuthenticated) {
     return (
       <div className="min-h-screen bg-brand-beige flex flex-col items-center justify-center gap-6">
-        <div className="w-32 h-32 loading-pulse">
-           <img src="https://zugbripyvaidkpesrvaa.supabase.co/storage/v1/object/sign/Imagenes/Guidari%20sin%20fondo.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9kMmViNTc1OC0yY2UyLTRkODgtOGQ5MC1jZWFiYTM1MjY1Y2IiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJJbWFnZW5lcy9HdWlkYXJpIHNpbiBmb25kby5wbmciLCJpYXQiOjE3NjgzNDI2MjIsImV4cCI6MjM5OTA2MjYyMn0.0r_lpPOfT1oMZxTGa4YLu57M5VPrmTT_VJsma7EpoX8" alt="Logo" className="w-full h-full object-contain" />
-        </div>
-        <div className="flex items-center gap-3 text-brand-navy">
-          <Loader2 className="animate-spin" size={20} />
-          <span className="font-display font-bold uppercase tracking-widest text-xs">Conectando con Guidari Cloud...</span>
-        </div>
+        <Loader2 className="animate-spin text-brand-navy" size={48} />
+        <span className="font-display font-bold uppercase tracking-widest text-xs text-brand-navy">Guidari Cloud Sync...</span>
       </div>
     );
   }
 
   if (!isAuthenticated || !currentUser) {
-    return <Auth onLogin={handleLogin} users={professionals} onRegister={(u) => handleUpdateProfessionals([...professionals, u])} />;
+    return <Auth onLogin={(u) => { setCurrentUser(u); setIsAuthenticated(true); }} users={professionals} onRegister={(u) => handleUpdateProfessionals([...professionals, u])} />;
   }
 
   const filteredSidebarItems = sidebarItems.filter(item => item.roles.includes(currentUser.role));
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard patients={patients} appointments={appointments} currentUser={currentUser} professionals={professionals} onAddAppointment={(a) => handleUpdateAppointments([...appointments, a])} />;
-      case 'patients':
-        return <PatientList patients={patients} professionals={professionals} currentUser={currentUser} onUpdate={handleUpdatePatients} appointments={appointments} />;
-      case 'professionals':
-        return <ProfessionalsList professionals={professionals} appointments={appointments} patients={patients} currentUser={currentUser} onUpdate={handleUpdateProfessionals} />;
-      case 'calendar':
-        return <CalendarView appointments={appointments} patients={patients} professionals={professionals} currentUser={currentUser} onUpdate={handleUpdateAppointments} />;
-      case 'documents':
-        return <DocumentsView patients={patients} professionals={professionals} onUpdatePatients={handleUpdatePatients} />;
-      case 'finances':
-        return <FinanceView appointments={appointments} professionals={professionals} patients={patients} onUpdateProfessionals={handleUpdateProfessionals} onUpdatePatients={handleUpdatePatients} />;
-      case 'settings':
-        return (
-          <SettingsView 
-            users={professionals} 
-            onUpdateUsers={handleUpdateProfessionals} 
-            currentUser={currentUser} 
-            patients={patients}
-            appointments={appointments}
-            onImportData={(data) => {
-               if(data.patients) handleUpdatePatients(data.patients);
-               if(data.users) handleUpdateProfessionals(data.users);
-               if(data.appointments) handleUpdateAppointments(data.appointments);
-            }}
-            logs={logs}
-            addLog={addLog}
-            onUpdateCurrentUser={setCurrentUser}
-            onRefreshData={fetchData}
-          />
-        );
-      default:
-        return <Dashboard patients={patients} appointments={appointments} currentUser={currentUser} professionals={professionals} onAddAppointment={(a) => handleUpdateAppointments([...appointments, a])} />;
+      case 'dashboard': return <Dashboard patients={patients} appointments={appointments} currentUser={currentUser} professionals={professionals} onAddAppointment={(a) => handleUpdateAppointments([...appointments, a])} />;
+      case 'patients': return <PatientList patients={patients} professionals={professionals} currentUser={currentUser} onUpdate={handleUpdatePatients} appointments={appointments} onDeletePatient={(id) => deleteFromSupabase('patients', id)} />;
+      case 'professionals': return <ProfessionalsList professionals={professionals} appointments={appointments} patients={patients} currentUser={currentUser} onUpdate={handleUpdateProfessionals} onDeletePro={(id) => deleteFromSupabase('users', id)} />;
+      case 'calendar': return <CalendarView appointments={appointments} patients={patients} professionals={professionals} currentUser={currentUser} onUpdate={handleUpdateAppointments} />;
+      case 'documents': return <DocumentsView patients={patients} professionals={professionals} onUpdatePatients={handleUpdatePatients} />;
+      case 'finances': return <FinanceView appointments={appointments} professionals={professionals} patients={patients} onUpdateProfessionals={handleUpdateProfessionals} onUpdatePatients={handleUpdatePatients} />;
+      case 'settings': return <SettingsView users={professionals} onUpdateUsers={handleUpdateProfessionals} currentUser={currentUser} patients={patients} appointments={appointments} onImportData={(d) => { if(d.patients) handleUpdatePatients(d.patients); if(d.users) handleUpdateProfessionals(d.users); if(d.appointments) handleUpdateAppointments(d.appointments); }} logs={logs} addLog={addLog} onUpdateCurrentUser={setCurrentUser} onRefreshData={fetchData} />;
+      default: return <Dashboard patients={patients} appointments={appointments} currentUser={currentUser} professionals={professionals} />;
     }
   };
 
@@ -326,53 +265,33 @@ const App: React.FC = () => {
     <div className="flex min-h-screen font-sans text-brand-navy">
       <aside className={`${isSidebarOpen ? 'w-80' : 'w-24'} bg-white border-r border-brand-sage flex flex-col transition-all duration-300 z-50 shadow-sm`}>
         <div className="p-8 flex flex-col items-center">
-          <div className={`${isSidebarOpen ? 'w-52 h-52' : 'w-20 h-20'} mb-6 transition-all duration-500 flex items-center justify-center`}>
-             <img src="https://zugbripyvaidkpesrvaa.supabase.co/storage/v1/object/sign/Imagenes/Guidari%20sin%20fondo.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9kMmViNTc1OC0yY2UyLTRkODgtOGQ5MC1jZWFiYTM1MjY1Y2IiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJJbWFnZW5lcy9HdWlkYXJpIHNpbiBmb25kby5wbmciLCJpYXQiOjE3NjgzNDI2MjIsImV4cCI6MjM5OTA2MjYyMn0.0r_lpPOfT1oMZxTGa4YLu57M5VPrmTT_VJsma7EpoX8" alt="Logo" className="w-full h-full object-contain" />
-          </div>
-          {isSidebarOpen && (
-            <div className="text-center">
-              <p className="text-[11px] text-brand-teal uppercase tracking-[0.2em] font-black">Espacio Interdisciplinario</p>
-              <p className="text-[10px] text-brand-navy/60 uppercase tracking-[0.15em] font-black mt-1.5">Centro Guidari</p>
-            </div>
-          )}
+          <div className="w-20 h-20 mb-6"><img src="https://zugbripyvaidkpesrvaa.supabase.co/storage/v1/object/sign/Imagenes/Guidari%20sin%20fondo.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9kMmViNTc1OC0yY2UyLTRkODgtOGQ5MC1jZWFiYTM1MjY1Y2IiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJJbWFnZW5lcy9HdWlkYXJpIHNpbiBmb25kby5wbmciLCJpYXQiOjE3NjgzNDI2MjIsImV4cCI6MjM5OTA2MjYyMn0.0r_lpPOfT1oMZxTGa4YLu57M5VPrmTT_VJsma7EpoX8" alt="Logo" className="w-full h-full object-contain" /></div>
+          {isSidebarOpen && <p className="text-[11px] text-brand-teal uppercase tracking-[0.2em] font-black text-center">Centro Guidari</p>}
         </div>
         <nav className="flex-1 px-5 py-4 space-y-2">
           {filteredSidebarItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-4 px-5 py-4 rounded-[24px] transition-all duration-300 ${
-                activeTab === item.id 
-                ? 'bg-brand-navy text-white shadow-xl shadow-brand-navy/30 font-bold scale-[1.02]' 
-                : 'text-brand-navy/60 hover:bg-brand-beige hover:text-brand-navy hover:translate-x-1'
-              }`}
-            >
-              <item.icon size={22} strokeWidth={activeTab === item.id ? 2.5 : 2} />
-              {isSidebarOpen && <span className="text-sm tracking-tight">{item.label}</span>}
+            <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-4 px-5 py-4 rounded-[24px] transition-all duration-300 ${activeTab === item.id ? 'bg-brand-navy text-white shadow-xl shadow-brand-navy/30 font-bold scale-[1.02]' : 'text-brand-navy/60 hover:bg-brand-beige hover:text-brand-navy'}`}>
+              <item.icon size={22} /><span className={isSidebarOpen ? 'text-sm' : 'hidden'}>{item.label}</span>
             </button>
           ))}
         </nav>
         <div className="p-6 border-t border-brand-beige">
-          <button onClick={handleLogout} className="w-full flex items-center gap-4 px-5 py-3 text-brand-navy/40 hover:text-brand-coral transition-colors rounded-2xl">
-            <LogOut size={20} />
-            {isSidebarOpen && <span className="text-sm font-bold">Cerrar Sesión</span>}
+          <button onClick={() => setIsAuthenticated(false)} className="w-full flex items-center gap-4 px-5 py-3 text-brand-navy/40 hover:text-brand-coral transition-colors rounded-2xl">
+            <LogOut size={20} />{isSidebarOpen && <span className="text-sm font-bold">Cerrar Sesión</span>}
           </button>
         </div>
       </aside>
-
       <main className="flex-1 flex flex-col h-screen overflow-hidden bg-brand-beige/50 relative">
-        <header className="h-24 bg-transparent flex items-center justify-end px-10 relative z-10">
+        <header className="h-24 flex items-center justify-end px-10 relative z-10">
           <div className="flex items-center gap-4 pl-6 border-l border-brand-sage/50">
             <div className="text-right hidden sm:block">
               <p className="text-sm font-black text-brand-navy leading-none">{currentUser.name}</p>
-              <p className="text-[9px] text-brand-teal uppercase font-black tracking-widest mt-1.5">{currentUser.role === UserRole.ADMIN ? 'ADMINISTRADOR' : currentUser.specialty}</p>
+              <p className="text-[9px] text-brand-teal uppercase font-black tracking-widest mt-1.5">{currentUser.role === UserRole.ADMIN ? 'ADMIN' : currentUser.specialty}</p>
             </div>
-            <img src={currentUser.avatar} alt="Avatar" className="w-10 h-10 rounded-2xl object-cover ring-2 ring-white shadow-md border border-brand-sage/30" />
+            <img src={currentUser.avatar} alt="Avatar" className="w-10 h-10 rounded-2xl object-cover ring-2 ring-white shadow-md" />
           </div>
         </header>
-        <section className="flex-1 overflow-y-auto custom-scrollbar px-10 pb-10 relative z-10">
-          {renderContent()}
-        </section>
+        <section className="flex-1 overflow-y-auto custom-scrollbar px-10 pb-10 relative z-10">{renderContent()}</section>
       </main>
     </div>
   );
